@@ -739,9 +739,1697 @@ public class InventoryService {
         </div>
       </section>
 
+      {/* 多级缓存架构 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">多级缓存架构</h2>
+
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border-l-4 border-purple-500 p-6 rounded-lg mb-6">
+          <h4 className="font-bold text-gray-900 mb-2">🏗️ 什么是多级缓存?</h4>
+          <p className="text-gray-700 text-sm mb-3">
+            多级缓存是指在应用中同时使用<strong>本地缓存（L1）</strong>和<strong>分布式缓存（L2）</strong>，
+            通过两级缓存组合，进一步提升性能，减轻 Redis 压力。
+          </p>
+          <div className="bg-white p-4 rounded border border-purple-200 mt-3">
+            <h5 className="font-semibold text-gray-900 mb-2">📊 性能对比</h5>
+            <ul className="space-y-1 text-xs text-gray-700">
+              <li>• <strong>本地缓存（Caffeine）</strong>: 0.01-0.1ms（最快）</li>
+              <li>• <strong>Redis 缓存</strong>: 0.1-1ms</li>
+              <li>• <strong>数据库查询</strong>: 50-200ms</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">1. Caffeine 本地缓存配置</h3>
+        <p className="text-gray-700 mb-4">
+          Caffeine 是 Java 8 的高性能缓存库，基于 Google Guava 改进，提供了更好的性能和更丰富的API。
+        </p>
+
+        <CodeBlock
+          language="xml"
+          code={`<!-- pom.xml -->
+<dependency>
+    <groupId>com.github.ben-manes.caffeine</groupId>
+    <artifactId>caffeine</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+</dependency>`}
+        />
+
+        <CodeBlock
+          language="java"
+          code={`@Configuration
+@EnableCaching
+public class CaffeineConfig {
+
+    @Bean
+    public Cache<String, Object> caffeineCache() {
+        return Caffeine.newBuilder()
+            // 设置初始容量
+            .initialCapacity(100)
+            // 最大缓存条目数
+            .maximumSize(1000)
+            // 写入后过期时间（5分钟）
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            // 访问后过期时间（3分钟）
+            .expireAfterAccess(3, TimeUnit.MINUTES)
+            // 开启统计
+            .recordStats()
+            // 移除监听器
+            .removalListener((key, value, cause) -> {
+                log.info("本地缓存移除 - key: {}, cause: {}", key, cause);
+            })
+            .build();
+    }
+
+    @Bean
+    public CacheManager cacheManager() {
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+        cacheManager.setCaffeine(Caffeine.newBuilder()
+            .initialCapacity(100)
+            .maximumSize(1000)
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .recordStats());
+        return cacheManager;
+    }
+}`}
+        />
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4 mt-8">2. L1 + L2 缓存实现</h3>
+        <p className="text-gray-700 mb-4">
+          实现 L1（本地缓存）+ L2（Redis）两级缓存架构，查询时先查 L1，未命中再查 L2，最后查数据库。
+        </p>
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * 两级缓存服务
+ */
+@Component
+public class TwoLevelCacheService {
+
+    @Autowired
+    private Cache<String, Object> caffeineCache;  // L1: 本地缓存
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;  // L2: Redis
+
+    private static final String L1_CACHE_PREFIX = "l1:";
+    private static final String L2_CACHE_PREFIX = "l2:";
+
+    /**
+     * 获取缓存（L1 -> L2 -> DB）
+     */
+    public <T> T get(String key, Class<T> type, Supplier<T> dbLoader) {
+        // 1. 先查 L1 本地缓存
+        Object l1Value = caffeineCache.getIfPresent(L1_CACHE_PREFIX + key);
+        if (l1Value != null) {
+            log.info("L1 命中 - key: {}", key);
+            return type.cast(l1Value);
+        }
+
+        // 2. 再查 L2 Redis
+        String l2Key = L2_CACHE_PREFIX + key;
+        Object l2Value = redisTemplate.opsForValue().get(l2Key);
+        if (l2Value != null) {
+            log.info("L2 命中，回写 L1 - key: {}", key);
+            // 回写到 L1 本地缓存
+            caffeineCache.put(L1_CACHE_PREFIX + key, l2Value);
+            return type.cast(l2Value);
+        }
+
+        // 3. 查询数据库
+        log.info("缓存未命中，查询数据库 - key: {}", key);
+        T dbValue = dbLoader.get();
+
+        if (dbValue != null) {
+            // 写入 L2
+            redisTemplate.opsForValue().set(l2Key, dbValue, 30, TimeUnit.MINUTES);
+            // 写入 L1
+            caffeineCache.put(L1_CACHE_PREFIX + key, dbValue);
+        }
+
+        return dbValue;
+    }
+
+    /**
+     * 删除缓存（同时删除 L1 和 L2）
+     */
+    public void delete(String key) {
+        // 删除 L1
+        caffeineCache.invalidate(L1_CACHE_PREFIX + key);
+        // 删除 L2
+        redisTemplate.delete(L2_CACHE_PREFIX + key);
+        log.info("两级缓存已删除 - key: {}", key);
+    }
+
+    /**
+     * 更新缓存
+     */
+    public void put(String key, Object value) {
+        // 更新 L1
+        caffeineCache.put(L1_CACHE_PREFIX + key, value);
+        // 更新 L2
+        redisTemplate.opsForValue().set(L2_CACHE_PREFIX + key, value, 30, TimeUnit.MINUTES);
+        log.info("两级缓存已更新 - key: {}", key);
+    }
+}
+
+/**
+ * 使用两级缓存
+ */
+@Service
+public class ProductService {
+
+    @Autowired
+    private TwoLevelCacheService twoLevelCache;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    public Product getProductById(Long id) {
+        String key = "product:" + id;
+
+        return twoLevelCache.get(key, Product.class, () -> {
+            // 缓存未命中时从数据库加载
+            return productMapper.selectById(id);
+        });
+    }
+
+    public void updateProduct(Product product) {
+        // 更新数据库
+        productMapper.updateById(product);
+
+        // 删除两级缓存
+        String key = "product:" + product.getId();
+        twoLevelCache.delete(key);
+    }
+}`}
+        />
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4 mt-8">3. 缓存预热</h3>
+        <p className="text-gray-700 mb-4">
+          应用启动时，提前将热点数据加载到缓存中，避免冷启动时的缓存击穿问题。
+        </p>
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * 缓存预热服务
+ */
+@Component
+public class CacheWarmupService {
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    @Autowired
+    private TwoLevelCacheService twoLevelCache;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    /**
+     * 应用启动时预热
+     */
+    @PostConstruct
+    public void warmUpOnStartup() {
+        log.info("开始缓存预热...");
+
+        // 1. 预热商品数据
+        warmUpProductCache();
+
+        // 2. 预热配置数据
+        warmUpConfigCache();
+
+        // 3. 预热用户数据
+        warmUpUserCache();
+
+        log.info("缓存预热完成");
+    }
+
+    /**
+     * 预热商品缓存
+     */
+    private void warmUpProductCache() {
+        // 查询热点商品（例如：销量前1000的商品）
+        List<Product> hotProducts = productMapper.selectHotProducts(1000);
+
+        for (Product product : hotProducts) {
+            String key = "product:" + product.getId();
+            twoLevelCache.put(key, product);
+        }
+
+        log.info("商品缓存预热完成，数量: {}", hotProducts.size());
+    }
+
+    /**
+     * 预热配置缓存
+     */
+    private void warmUpConfigCache() {
+        // 查询所有配置
+        List<Config> configs = configMapper.selectAll();
+
+        for (Config config : configs) {
+            String key = "config:" + config.getKey();
+            redisTemplate.opsForValue().set(key, config, 1, TimeUnit.HOURS);
+        }
+
+        log.info("配置缓存预热完成，数量: {}", configs.size());
+    }
+
+    /**
+     * 预热用户缓存
+     */
+    private void warmUpUserCache() {
+        // 查询活跃用户（最近7天有登录的用户）
+        List<User> activeUsers = userMapper.selectActiveUsers(7);
+
+        for (User user : activeUsers) {
+            String key = "user:" + user.getId();
+            twoLevelCache.put(key, user);
+        }
+
+        log.info("用户缓存预热完成，数量: {}", activeUsers.size());
+    }
+
+    /**
+     * 定时预热（每小时执行一次）
+     */
+    @Scheduled(cron = "0 0 * * * ?")
+    public void scheduledWarmup() {
+        log.info("执行定时缓存预热");
+        warmUpProductCache();
+    }
+}
+
+/**
+ * 手动触发预热接口
+ */
+@RestController
+@RequestMapping("/admin/cache")
+public class CacheController {
+
+    @Autowired
+    private CacheWarmupService cacheWarmupService;
+
+    /**
+     * 手动触发缓存预热
+     */
+    @PostMapping("/warmup")
+    public Result<String> warmupCache() {
+        cacheWarmupService.warmUpOnStartup();
+        return Result.success("缓存预热完成");
+    }
+
+    /**
+     * 预热指定商品
+     */
+    @PostMapping("/warmup/product/{productId}")
+    public Result<String> warmupProduct(@PathVariable Long productId) {
+        Product product = productMapper.selectById(productId);
+        if (product != null) {
+            String key = "product:" + productId;
+            twoLevelCache.put(key, product);
+            return Result.success("商品缓存预热成功");
+        }
+        return Result.error("商品不存在");
+    }
+}`}
+        />
+
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg mb-6 mt-8">
+          <h4 className="font-bold text-gray-900 mb-2">💡 多级缓存注意事项</h4>
+          <ul className="space-y-2 text-sm text-gray-700">
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>本地缓存容量限制</strong>：不要在本地缓存中存储大量数据，避免 OOM</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>分布式环境下的一致性</strong>：本地缓存在多实例间不同步，适合读多写少的场景</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>缓存更新策略</strong>：更新数据时，需要通知所有实例清除本地缓存</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>监控 L1 命中率</strong>：如果 L1 命中率过低，说明缓存配置不合理</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      {/* 缓存一致性 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">缓存一致性解决方案</h2>
+
+        <div className="bg-gradient-to-r from-orange-50 to-red-50 border-l-4 border-orange-500 p-6 rounded-lg mb-6">
+          <h4 className="font-bold text-gray-900 mb-2">⚖️ 什么是缓存一致性问题?</h4>
+          <p className="text-gray-700 text-sm mb-3">
+            当数据库和缓存同时存在时，如何保证两者数据的<strong>一致性</strong>是核心难点。
+            更新数据库成功但缓存更新失败、或者并发读写导致数据不一致，都是常见问题。
+          </p>
+          <div className="bg-white p-4 rounded border border-orange-200 mt-3">
+            <h5 className="font-semibold text-gray-900 mb-2">🚨 常见不一致场景</h5>
+            <ul className="space-y-1 text-xs text-gray-700">
+              <li>• 更新数据库成功，但删除缓存失败</li>
+              <li>• 线程A读缓存，线程B同时更新数据库和缓存</li>
+              <li>• 缓存过期时间过长，导致读取到旧数据</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">1. 延时双删策略</h3>
+        <p className="text-gray-700 mb-4">
+          更新数据库前后各删除一次缓存，第二次删除延时执行，确保删除在更新之前未完成查询的缓存。
+        </p>
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * 延时双删策略
+ */
+@Service
+public class DelayedDoubleDeleteService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    @Autowired
+    private ThreadPoolExecutor executor;
+
+    private static final long DELAY_MILLIS = 500;  // 延时500ms
+
+    /**
+     * 更新商品（延时双删）
+     */
+    @Transactional
+    public void updateProduct(Product product) {
+        String key = "product:" + product.getId();
+
+        // 1. 第一次删除缓存
+        redisTemplate.delete(key);
+        log.info("第一次删除缓存 - key: {}", key);
+
+        // 2. 更新数据库
+        productMapper.updateById(product);
+        log.info("数据库已更新 - id: {}", product.getId());
+
+        // 3. 第二次删除缓存（延时执行）
+        executor.execute(() -> {
+            try {
+                Thread.sleep(DELAY_MILLIS);
+                redisTemplate.delete(key);
+                log.info("第二次删除缓存（延时） - key: {}", key);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("延时删除失败", e);
+            }
+        });
+    }
+}
+
+/**
+ * 读写分离策略（Write-Through）
+ */
+@Service
+public class WriteThroughCacheService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    /**
+     * 更新数据（先更新数据库，再删除缓存）
+     * 适用场景：对一致性要求高的场景
+     */
+    @Transactional
+    public void updateWithCacheDelete(Product product) {
+        String key = "product:" + product.getId();
+
+        // 1. 更新数据库
+        productMapper.updateById(product);
+
+        // 2. 删除缓存（而非更新缓存）
+        redisTemplate.delete(key);
+
+        log.info("数据已更新，缓存已删除");
+    }
+
+    /**
+     * 更新数据（先删除缓存，再更新数据库，再延时删除）
+     * 适用场景：高并发读写场景
+     */
+    @Transactional
+    public void updateWithDelayedDelete(Product product) {
+        String key = "product:" + product.getId();
+
+        // 1. 删除缓存
+        redisTemplate.delete(key);
+
+        // 2. 更新数据库
+        productMapper.updateById(product);
+
+        // 3. 延时再删除一次
+        try {
+            Thread.sleep(500);
+            redisTemplate.delete(key);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        log.info("延时双删完成");
+    }
+}
+
+/**
+ * 分布式锁 + 缓存删除（最强一致性）
+ */
+@Service
+public class StrongConsistencyCacheService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    @Autowired
+    private RedisDistributedLock distributedLock;
+
+    /**
+     * 更新数据（保证强一致性）
+     */
+    public void updateWithStrongConsistency(Product product) {
+        String key = "product:" + product.getId();
+        String lockKey = "lock:update:" + product.getId();
+        String requestId = UUID.randomUUID().toString();
+
+        try {
+            // 1. 获取分布式锁
+            boolean locked = distributedLock.tryLock(lockKey, requestId, 10);
+
+            if (!locked) {
+                throw new RuntimeException("系统繁忙，请稍后重试");
+            }
+
+            // 2. 删除缓存
+            redisTemplate.delete(key);
+
+            // 3. 更新数据库
+            productMapper.updateById(product);
+
+            // 4. 再次删除缓存（兜底）
+            redisTemplate.delete(key);
+
+            log.info("强一致性更新完成");
+
+        } finally {
+            // 5. 释放锁
+            distributedLock.unlock(lockKey, requestId);
+        }
+    }
+}`}
+        />
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4 mt-8">2. Canal binlog 订阅方案</h3>
+        <p className="text-gray-700 mb-4">
+          通过 Canal 监听 MySQL binlog，当数据库数据变更时，自动更新缓存，解耦业务代码。
+        </p>
+
+        <CodeBlock
+          language="xml"
+          code={`<!-- Canal 客户端依赖 -->
+<dependency>
+    <groupId>com.alibaba.otter</groupId>
+    <artifactId>canal.client</artifactId>
+    <version>1.1.6</version>
+</dependency>`}
+        />
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * Canal 监听器 - 监听 MySQL binlog 变更
+ */
+@Component
+@Slf4j
+public class CanalClient {
+
+    private static final String REDIS_PRODUCT_PREFIX = "product:";
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    /**
+     * 启动 Canal 客户端
+     */
+    @PostConstruct
+    public void start() {
+        // 创建连接
+        CanalConnector connector = CanalConnectors.newSingleConnector(
+            new InetSocketAddress("canal-server", 11111),
+            "example",
+            "",
+            ""
+        );
+
+        try {
+            // 连接
+            connector.connect();
+            // 订阅所有表
+            connector.subscribe(".*\\..*");
+            // 回滚到最后一次提交的位置
+            connector.rollback();
+
+            log.info("Canal 客户端启动成功");
+
+            while (true) {
+                // 获取数据（每次获取 1000 条，不等待）
+                Message message = connector.getWithoutAck(1000);
+                long batchId = message.getId();
+                int size = message.getEntries().size();
+
+                if (batchId != -1 && size > 0) {
+                    // 处理 binlog 变更
+                    processEntry(message.getEntries());
+                }
+
+                // 确认提交
+                connector.ack(batchId);
+            }
+
+        } catch (Exception e) {
+            log.error("Canal 客户端异常", e);
+        } finally {
+            connector.disconnect();
+        }
+    }
+
+    /**
+     * 处理 binlog 条目
+     */
+    private void processEntry(List<CanalEntry.Entry> entries) {
+        for (CanalEntry.Entry entry : entries) {
+            if (entry.getEntryType() == CanalEntry.EntryType.ROWDATA) {
+                try {
+                    CanalEntry.RowChange rowChange =
+                        CanalEntry.RowChange.parseFrom(entry.getStoreValue());
+
+                    // 只处理数据变更
+                    if (rowChange.getEventType() == CanalEntry.EventType.UPDATE ||
+                        rowChange.getEventType() == CanalEntry.EventType.DELETE ||
+                        rowChange.getEventType() == CanalEntry.EventType.INSERT) {
+
+                        handleRowChange(rowChange);
+                    }
+                } catch (Exception e) {
+                    log.error("解析 binlog 失败", e);
+                }
+            }
+        }
+    }
+
+    /**
+     * 处理行变更
+     */
+    private void handleRowChange(CanalEntry.RowChange rowChange) {
+        for (CanalEntry.RowData rowData : rowChange.getRowDatasList()) {
+            // 获取表名
+            String tableName = rowChange.getTableName();
+
+            // 根据表名处理不同的缓存
+            switch (tableName) {
+                case "product":
+                    handleProductChange(rowData);
+                    break;
+                case "user":
+                    handleUserChange(rowData);
+                    break;
+                // 更多表...
+            }
+        }
+    }
+
+    /**
+     * 处理商品表变更
+     */
+    private void handleProductChange(CanalEntry.RowData rowData) {
+        // 获取 ID
+        Long productId = extractId(rowData);
+
+        if (productId != null) {
+            String key = REDIS_PRODUCT_PREFIX + productId;
+
+            // 删除缓存
+            redisTemplate.delete(key);
+
+            log.info("商品变更，已删除缓存 - productId: {}", productId);
+        }
+    }
+
+    /**
+     * 从行数据中提取 ID
+     */
+    private Long extractId(CanalEntry.RowData rowData) {
+        for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
+            if ("id".equals(column.getName())) {
+                return Long.parseLong(column.getValue());
+            }
+        }
+        return null;
+    }
+}
+
+/**
+ * Canal 消息队列集成（推荐）
+ *
+ * 使用 Canal 将 binlog 变更发送到消息队列（如 RocketMQ），
+ * 然后消费者处理缓存更新，实现解耦和削峰填谷。
+ */
+@Component
+@Slf4j
+public class CanalCacheConsumer {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    /**
+     * 消费 Canal 发送的消息
+     */
+    @RocketMQMessageListener(
+        topic = "canal-binlog",
+        consumerGroup = "cache-update-group"
+    )
+    public void onMessage(CanalMessage message) {
+        try {
+            String table = message.getTable();
+            String type = message.getType();  // INSERT, UPDATE, DELETE
+            Map<String, Object> data = message.getData();
+
+            // 根据表名处理
+            switch (table) {
+                case "product":
+                    handleProductChange(type, data);
+                    break;
+                case "user":
+                    handleUserChange(type, data);
+                    break;
+            }
+
+        } catch (Exception e) {
+            log.error("处理 Canal 消息失败", e);
+            // 重试或记录到死信队列
+        }
+    }
+
+    /**
+     * 处理商品变更
+     */
+    private void handleProductChange(String type, Map<String, Object> data) {
+        Long productId = (Long) data.get("id");
+        String key = "product:" + productId;
+
+        if ("DELETE".equals(type)) {
+            // 删除操作：直接删除缓存
+            redisTemplate.delete(key);
+        } else if ("UPDATE".equals(type)) {
+            // 更新操作：删除缓存，下次查询时重新加载
+            redisTemplate.delete(key);
+        } else if ("INSERT".equals(type)) {
+            // 插入操作：可以预加载缓存（可选）
+            // Product product = productMapper.selectById(productId);
+            // redisTemplate.opsForValue().set(key, product, 30, TimeUnit.MINUTES);
+        }
+
+        log.info("商品缓存已更新 - productId: {}, type: {}", productId, type);
+    }
+}`}
+        />
+
+        <div className="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg mb-6 mt-8">
+          <h4 className="font-bold text-gray-900 mb-2">✅ 缓存一致性方案对比</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div className="bg-white p-4 rounded border border-green-200">
+              <h5 className="font-bold text-gray-900 mb-2">延时双删</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>✓ 实现简单</li>
+                <li>✓ 性能影响小</li>
+                <li>✗ 仍有短暂不一致</li>
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded border border-green-200">
+              <h5 className="font-bold text-gray-900 mb-2">分布式锁</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>✓ 强一致性</li>
+                <li>✗ 性能较差</li>
+                <li>✗ 实现复杂</li>
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded border border-green-200">
+              <h5 className="font-bold text-gray-900 mb-2">Canal binlog</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>✓ 业务解耦</li>
+                <li>✓ 最终一致性好</li>
+                <li>✗ 需要额外组件</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 缓存穿透/击穿/雪崩深入 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">缓存三大问题深入解决方案</h2>
+
+        <div className="space-y-6">
+          {/* 布隆过滤器深入 */}
+          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-3">💥 缓存穿透 - 布隆过滤器深入</h3>
+            <p className="text-sm text-gray-700 mb-3">
+              布隆过滤器是一种<strong>空间效率极高的概率型数据结构</strong>，用于判断一个元素是否在集合中。
+              优点是空间效率和查询时间都远超一般算法，缺点是有一定的误判率。
+            </p>
+
+            <CodeBlock
+              language="java"
+              code={`/**
+ * 布隆过滤器配置
+ */
+@Configuration
+public class BloomFilterConfig {
+
+    /**
+     * 初始化布隆过滤器
+     */
+    @Bean
+    public BloomFilter<Long> productIdBloomFilter() {
+        // 预计插入100万条数据
+        long expectedInsertions = 1000000;
+        // 误判率 0.01%
+        double fpp = 0.0001;
+
+        return BloomFilter.create(
+            Funnels.longFunnel(),
+            expectedInsertions,
+            fpp
+        );
+    }
+}
+
+/**
+ * 布隆过滤器服务
+ */
+@Component
+@Slf4j
+public class BloomFilterService {
+
+    @Autowired
+    private BloomFilter<Long> productIdBloomFilter;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    /**
+     * 初始化布隆过滤器（应用启动时执行）
+     */
+    @PostConstruct
+    public void initBloomFilter() {
+        log.info("开始初始化布隆过滤器...");
+
+        // 查询所有商品ID
+        List<Long> allIds = productMapper.selectAllIds();
+
+        // 添加到布隆过滤器
+        for (Long id : allIds) {
+            productIdBloomFilter.put(id);
+        }
+
+        log.info("布隆过滤器初始化完成，数量: {}", allIds.size());
+    }
+
+    /**
+     * 检查ID是否存在
+     */
+    public boolean mightContain(Long id) {
+        return productIdBloomFilter.mightContain(id);
+    }
+
+    /**
+     * 添加新ID到布隆过滤器
+     */
+    public void addId(Long id) {
+        productIdBloomFilter.put(id);
+    }
+}
+
+/**
+ * 商品服务（使用布隆过滤器）
+ */
+@Service
+@Slf4j
+public class ProductService {
+
+    @Autowired
+    private BloomFilterService bloomFilterService;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    /**
+     * 查询商品（布隆过滤器 + 缓存）
+     */
+    public Product getProductById(Long id) {
+        // 1. 布隆过滤器检查
+        if (!bloomFilterService.mightContain(id)) {
+            log.warn("商品不存在（布隆过滤器拦截） - id: {}", id);
+            return null;
+        }
+
+        // 2. 查询缓存
+        String key = "product:" + id;
+        Object cached = redisTemplate.opsForValue().get(key);
+
+        if (cached != null) {
+            if (cached instanceof String && ((String) cached).isEmpty()) {
+                // 缓存空对象
+                return null;
+            }
+            return (Product) cached;
+        }
+
+        // 3. 查询数据库
+        Product product = productMapper.selectById(id);
+
+        if (product != null) {
+            // 写入缓存
+            redisTemplate.opsForValue().set(key, product, 30, TimeUnit.MINUTES);
+        } else {
+            // 缓存空对象
+            redisTemplate.opsForValue().set(key, "", 5, TimeUnit.MINUTES);
+        }
+
+        return product;
+    }
+
+    /**
+     * 添加商品（同步更新布隆过滤器）
+     */
+    public void addProduct(Product product) {
+        // 插入数据库
+        productMapper.insert(product);
+
+        // 添加到布隆过滤器
+        bloomFilterService.addId(product.getId());
+
+        log.info("商品已添加，布隆过滤器已更新 - id: {}", product.getId());
+    }
+}`}
+            />
+
+            <div className="bg-white p-4 rounded border border-red-200 mt-4">
+              <h5 className="font-semibold text-gray-900 mb-2">📊 布隆过滤器参数说明</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li><strong>expectedInsertions</strong>: 预计插入数量，建议设置为实际数量的1.2-1.5倍</li>
+                <li><strong>fpp (False Positive Probability)</strong>: 误判率，越小越准确但占用空间越大</li>
+                <li><strong>推荐值</strong>: 误判率 0.01% 或 0.001%</li>
+                <li><strong>空间占用</strong>: 100万条数据，误判率0.01%，约占用1.2MB</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* 缓存击穿深入 */}
+          <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-3">⚡ 缓存击穿 - 分布式锁深入</h3>
+            <p className="text-sm text-gray-700 mb-3">
+              缓存击穿是指<strong>热点 key</strong>过期瞬间，大量请求直接访问数据库。
+              除了分布式锁，还可以使用<strong>热点数据永不过期</strong>策略。
+            </p>
+
+            <CodeBlock
+              language="java"
+              code={`/**
+ * 热点数据永不过期策略
+ */
+@Service
+@Slf4j
+public class HotspotCacheService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    /**
+     * 缓存热点数据（逻辑过期）
+     */
+    public void cacheHotspotProduct(Product product) {
+        String key = "product:" + product.getId();
+        String expireKey = "product:expire:" + product.getId();
+
+        // 实际数据
+        redisTemplate.opsForValue().set(key, product);
+
+        // 过期时间标记（30分钟后过期）
+        long expireTime = System.currentTimeMillis() + 30 * 60 * 1000;
+        redisTemplate.opsForValue().set(expireKey, expireTime, 1, TimeUnit.DAYS);
+
+        log.info("热点数据已缓存 - id: {}", product.getId());
+    }
+
+    /**
+     * 获取热点数据（异步刷新）
+     */
+    public Product getHotspotProduct(Long id) {
+        String key = "product:" + id;
+        String expireKey = "product:expire:" + id;
+
+        // 获取缓存数据
+        Product product = (Product) redisTemplate.opsForValue().get(key);
+
+        // 获取过期时间
+        Object expireTimeObj = redisTemplate.opsForValue().get(expireKey);
+
+        if (product != null && expireTimeObj != null) {
+            long expireTime = Long.parseLong(expireTimeObj.toString());
+
+            // 如果已过期，异步刷新
+            if (System.currentTimeMillis() > expireTime) {
+                // 使用线程池异步刷新
+                CompletableFuture.runAsync(() -> {
+                    refreshProductCache(id);
+                });
+            }
+
+            // 返回旧数据（即使过期也返回）
+            return product;
+        }
+
+        // 缓存不存在，从数据库加载
+        return loadProductFromDb(id);
+    }
+
+    /**
+     * 刷新商品缓存
+     */
+    private void refreshProductCache(Long id) {
+        String lockKey = "lock:refresh:" + id;
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 10, TimeUnit.SECONDS);
+
+        if (locked != null && locked) {
+            try {
+                // 从数据库加载最新数据
+                Product product = productMapper.selectById(id);
+
+                if (product != null) {
+                    cacheHotspotProduct(product);
+                    log.info("热点数据已刷新 - id: {}", id);
+                }
+            } finally {
+                redisTemplate.delete(lockKey);
+            }
+        }
+    }
+
+    /**
+     * 从数据库加载商品
+     */
+    private Product loadProductFromDb(Long id) {
+        Product product = productMapper.selectById(id);
+
+        if (product != null) {
+            cacheHotspotProduct(product);
+        }
+
+        return product;
+    }
+}
+
+/**
+ * 多级互斥锁（防止缓存击穿）
+ */
+@Service
+@Slf4j
+public class MultiLevelLockCacheService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    private final Map<Long, Object> localLocks = new ConcurrentHashMap<>();
+
+    /**
+     * 获取商品（两级锁）
+     */
+    public Product getProductWithDoubleLock(Long id) {
+        String key = "product:" + id;
+        Object cached = redisTemplate.opsForValue().get(key);
+
+        if (cached != null) {
+            return (Product) cached;
+        }
+
+        // 第一级：本地锁（JVM 锁）
+        synchronized (this) {
+            // 双重检查
+            cached = redisTemplate.opsForValue().get(key);
+            if (cached != null) {
+                return (Product) cached;
+            }
+
+            // 第二级：分布式锁（Redis 锁）
+            String lockKey = "lock:query:" + id;
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 10, TimeUnit.SECONDS);
+
+            if (locked != null && locked) {
+                try {
+                    // 第三重检查
+                    cached = redisTemplate.opsForValue().get(key);
+                    if (cached != null) {
+                        return (Product) cached;
+                    }
+
+                    // 从数据库查询
+                    Product product = productMapper.selectById(id);
+
+                    if (product != null) {
+                        redisTemplate.opsForValue().set(key, product, 30, TimeUnit.MINUTES);
+                    }
+
+                    return product;
+
+                } finally {
+                    redisTemplate.delete(lockKey);
+                }
+            } else {
+                // 未获取到分布式锁，稍后重试
+                try {
+                    Thread.sleep(50);
+                    return getProductWithDoubleLock(id);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+        }
+    }
+}`}
+            />
+          </div>
+
+          {/* 缓存雪崩深入 */}
+          <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-3">❄️ 缓存雪崩 - 多重防护</h3>
+            <p className="text-sm text-gray-700 mb-3">
+              缓存雪崩是指大量 key 同时过期或 Redis 宕机，导致大量请求直接访问数据库。
+              需要通过<strong>过期时间随机化、熔断降级、限流</strong>等多重手段防护。
+            </p>
+
+            <CodeBlock
+              language="java"
+              code={`/**
+ * 缓存雪崩防护服务
+ */
+@Service
+@Slf4j
+public class CacheAvalancheProtectionService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    private final Random random = new Random();
+
+    /**
+     * 设置缓存（带随机过期时间）
+     */
+    public void setWithRandomExpire(String key, Object value, int baseMinutes) {
+        // 基础过期时间 + 随机时间（0-5分钟）
+        int expireTime = baseMinutes + random.nextInt(5);
+
+        redisTemplate.opsForValue().set(key, value, expireTime, TimeUnit.MINUTES);
+
+        log.info("缓存已设置 - key: {}, expire: {}分钟", key, expireTime);
+    }
+
+    /**
+     * 查询商品（带熔断降级）
+     */
+    @CircuitBreaker(name = "redisBackend", fallbackMethod = "getProductFallback")
+    public Product getProductWithCircuitBreaker(Long id) {
+        String key = "product:" + id;
+        Object cached = redisTemplate.opsForValue().get(key);
+
+        if (cached != null) {
+            return (Product) cached;
+        }
+
+        // 查询数据库
+        Product product = productMapper.selectById(id);
+
+        if (product != null) {
+            setWithRandomExpire(key, product, 30);
+        }
+
+        return product;
+    }
+
+    /**
+     * 降级方法（返回默认值或缓存数据）
+     */
+    public Product getProductFallback(Long id, Exception ex) {
+        log.error("Redis 服务异常，执行降级 - id: {}", id, ex);
+
+        // 返回默认商品或从本地缓存读取
+        Product defaultProduct = new Product();
+        defaultProduct.setId(id);
+        defaultProduct.setName("商品暂时不可用");
+
+        return defaultProduct;
+    }
+
+    /**
+     * 限流查询商品
+     */
+    @RateLimiter(name = "queryProduct", fallbackMethod = "getProductFallback")
+    public Product getProductWithRateLimit(Long id) {
+        return getProductWithCircuitBreaker(id);
+    }
+}
+
+/**
+ * Sentinel 限流配置
+ */
+@Configuration
+public class SentinelConfig {
+
+    @PostConstruct
+    public void initFlowRules() {
+        List<FlowRule> rules = new ArrayList<>();
+
+        // 商品查询限流：每秒最多 100 次
+        FlowRule rule = new FlowRule();
+        rule.setResource("queryProduct");
+        rule.setGrade(RuleConstant.FLOW_GRADE_QPS);
+        rule.setCount(100);
+        rules.add(rule);
+
+        FlowRuleManager.loadRules(rules);
+
+        log.info("Sentinel 限流规则已加载");
+    }
+}
+
+/**
+ * 缓存预热 + 随机过期时间
+ */
+@Component
+@Slf4j
+public class CacheWarmupWithRandomExpire {
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    private final Random random = new Random();
+
+    /**
+     * 应用启动时预热
+     */
+    @PostConstruct
+    public void warmUpCache() {
+        log.info("开始缓存预热（随机过期时间）...");
+
+        // 查询热点商品
+        List<Product> hotProducts = productMapper.selectHotProducts(1000);
+
+        for (Product product : hotProducts) {
+            String key = "product:" + product.getId();
+
+            // 随机过期时间：30-35分钟
+            int expireTime = 30 + random.nextInt(5);
+
+            redisTemplate.opsForValue().set(key, product, expireTime, TimeUnit.MINUTES);
+        }
+
+        log.info("缓存预热完成，数量: {}", hotProducts.size());
+    }
+}
+
+/**
+ * Redis 高可用配置（哨兵模式）
+ */
+@Configuration
+public class RedisSentinelConfig {
+
+    @Bean
+    public RedisConnectionFactory redisConnectionFactory() {
+        RedisSentinelConfiguration config = new RedisSentinelConfiguration()
+            .master("mymaster")
+            .sentinel("localhost", 26379)
+            .sentinel("localhost", 26380)
+            .sentinel("localhost", 26381);
+
+        config.setPassword("your-password");
+
+        return new LettuceConnectionFactory(config);
+    }
+
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(factory);
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+        return template;
+    }
+}`}
+            />
+
+            <div className="bg-white p-4 rounded border border-purple-200 mt-4">
+              <h5 className="font-semibold text-gray-900 mb-2">🛡️ 缓存雪崩防护策略</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>✓ <strong>过期时间随机化</strong>: 基础时间 + 随机时间，避免同时过期</li>
+                <li>✓ <strong>缓存预热</strong>: 应用启动时加载热点数据</li>
+                <li>✓ <strong>熔断降级</strong>: Redis 异常时返回默认值</li>
+                <li>✓ <strong>限流保护</strong>: 限制请求访问数据库的速率</li>
+                <li>✓ <strong>高可用架构</strong>: 使用哨兵或集群模式</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 热点数据处理 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">热点数据处理</h2>
+
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 p-6 rounded-lg mb-6">
+          <h4 className="font-bold text-gray-900 mb-2">🔥 什么是热点数据?</h4>
+          <p className="text-gray-700 text-sm mb-3">
+            热点数据是指<strong>访问频率极高</strong>的数据，如秒杀商品、热门新闻、热搜话题等。
+            热点数据会导致<strong>缓存倾斜</strong>（大量请求集中在少数 key）和<strong>数据库压力</strong>。
+          </p>
+          <div className="bg-white p-4 rounded border border-red-200 mt-3">
+            <h5 className="font-semibold text-gray-900 mb-2">📊 热点数据特征</h5>
+            <ul className="space-y-1 text-xs text-gray-700">
+              <li>• 访问频率远高于平均水平</li>
+              <li>• 集中在特定时间段（如秒杀活动）</li>
+              <li>• 可能导致单节点压力过大</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">1. 热点发现</h3>
+        <p className="text-gray-700 mb-4">
+          通过<strong>访问计数</strong>、<strong>Redis ZSet</strong>、<strong>日志分析</strong>等方式识别热点数据。
+        </p>
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * 热点数据识别服务
+ */
+@Component
+@Slf4j
+public class HotspotDetectionService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    private static final String HOT_KEY_PREFIX = "hot:key:";
+    private static final int HOT_THRESHOLD = 100;  // 热点阈值：100次/分钟
+
+    /**
+     * 记录访问（使用 ZSet 计数）
+     */
+    public void recordAccess(String key) {
+        String zkey = HOT_KEY_PREFIX + getCurrentMinute();
+
+        // 使用当前时间戳作为 score，确保同一 key 多次访问都能记录
+        long score = System.currentTimeMillis();
+
+        // 添加到 ZSet
+        redisTemplate.opsForZSet().add(zkey, key, score);
+
+        // 设置过期时间（5分钟）
+        redisTemplate.expire(zkey, 5, TimeUnit.MINUTES);
+    }
+
+    /**
+     * 检查是否是热点 key
+     */
+    public boolean isHotKey(String key) {
+        String zkey = HOT_KEY_PREFIX + getCurrentMinute();
+
+        // 统计访问次数
+        Long count = redisTemplate.opsForZSet().count(zkey, 0, System.currentTimeMillis());
+
+        return count != null && count >= HOT_THRESHOLD;
+    }
+
+    /**
+     * 获取当前分钟数
+     */
+    private String getCurrentMinute() {
+        LocalDateTime now = LocalDateTime.now();
+        return now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+    }
+
+    /**
+     * 获取热点 key 列表
+     */
+    public List<String> getHotKeys(int limit) {
+        String zkey = HOT_KEY_PREFIX + getCurrentMinute();
+
+        // 获取访问次数最多的 key
+        Set<Object> keys = redisTemplate.opsForZSet().reverseRange(zkey, 0, limit - 1);
+
+        if (keys == null) {
+            return Collections.emptyList();
+        }
+
+        return keys.stream()
+            .map(Object::toString)
+            .collect(Collectors.toList());
+    }
+}
+
+/**
+ * 热点数据拦截器（AOP 实现）
+ */
+@Aspect
+@Component
+@Slf4j
+public class HotspotInterceptor {
+
+    @Autowired
+    private HotspotDetectionService hotspotDetectionService;
+
+    @Autowired
+    private HotspotCacheService hotspotCacheService;
+
+    /**
+     * 拦截商品查询方法
+     */
+    @Around("execution(* com.example.service.ProductService.getProductById(..))")
+    public Object interceptGetProduct(ProceedingJoinPoint joinPoint) throws Throwable {
+        Long productId = (Long) joinPoint.getArgs()[0];
+        String key = "product:" + productId;
+
+        // 记录访问
+        hotspotDetectionService.recordAccess(key);
+
+        // 检查是否是热点
+        if (hotspotDetectionService.isHotKey(key)) {
+            log.info("检测到热点数据 - key: {}", key);
+
+            // 使用热点缓存策略
+            return hotspotCacheService.getHotspotProduct(productId);
+        }
+
+        // 正常查询流程
+        return joinPoint.proceed();
+    }
+}`}
+        />
+
+        <h3 className="text-2xl font-bold text-gray-900 mb-4 mt-8">2. 热点处理策略</h3>
+        <p className="text-gray-700 mb-4">
+          对于识别出的热点数据，采用<strong>本地缓存、永不过期、限流</strong>等策略处理。
+        </p>
+
+        <CodeBlock
+          language="java"
+          code={`/**
+ * 热点数据缓存服务
+ */
+@Component
+@Slf4j
+public class HotspotCacheService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    // 本地缓存（Guava Cache）
+    private final Cache<Long, Product> localCache = Caffeine.newBuilder()
+        .maximumSize(100)  // 最多缓存100个热点商品
+        .expireAfterWrite(1, TimeUnit.HOURS)  // 1小时过期
+        .recordStats()
+        .build();
+
+    /**
+     * 获取热点商品（本地缓存 + Redis）
+     */
+    public Product getHotspotProduct(Long id) {
+        // 1. 先查本地缓存
+        Product product = localCache.getIfPresent(id);
+
+        if (product != null) {
+            log.info("本地缓存命中 - id: {}", id);
+            return product;
+        }
+
+        // 2. 查询 Redis
+        String key = "product:" + id;
+        Object cached = redisTemplate.opsForValue().get(key);
+
+        if (cached != null) {
+            product = (Product) cached;
+            // 回写到本地缓存
+            localCache.put(id, product);
+            log.info("Redis 缓存命中，回写本地缓存 - id: {}", id);
+            return product;
+        }
+
+        // 3. 查询数据库
+        product = productMapper.selectById(id);
+
+        if (product != null) {
+            // 写入 Redis（永不过期）
+            redisTemplate.opsForValue().set(key, product);
+            // 写入本地缓存
+            localCache.put(id, product);
+            log.info("热点数据已加载 - id: {}", id);
+        }
+
+        return product;
+    }
+
+    /**
+     * 获取本地缓存统计信息
+     */
+    public CacheStats getCacheStats() {
+        return localCache.stats();
+    }
+}
+
+/**
+ * 热点数据限流
+ */
+@RestController
+@RequestMapping("/product")
+@Slf4j
+public class ProductController {
+
+    @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private HotspotDetectionService hotspotDetectionService;
+
+    /**
+     * 查询商品（带热点限流）
+     */
+    @GetMapping("/{id}")
+    @RateLimiter(name = "getProduct", fallbackMethod = "getProductFallback")
+    public Result<Product> getProduct(@PathVariable Long id) {
+        String key = "product:" + id;
+
+        // 记录访问
+        hotspotDetectionService.recordAccess(key);
+
+        // 检查是否是热点
+        if (hotspotDetectionService.isHotKey(key)) {
+            // 热点数据：使用更严格的限流
+            // 这里可以降级或返回缓存数据
+        }
+
+        Product product = productService.getProductById(id);
+
+        return Result.success(product);
+    }
+
+    /**
+     * 降级方法
+     */
+    public Result<Product> getProductFallback(Long id, Exception ex) {
+        log.error("查询商品失败，触发降级 - id: {}", id, ex);
+
+        // 返回默认商品或从本地缓存读取
+        return Result.error("系统繁忙，请稍后重试");
+    }
+}
+
+/**
+ * 热点数据自动过期时间延长
+ */
+@Service
+@Slf4j
+public class HotspotExpireExtensionService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
+    /**
+     * 定期检查热点数据并延长过期时间
+     */
+    @PostConstruct
+    public void startHotspotMonitor() {
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                extendHotspotExpire();
+            } catch (Exception e) {
+                log.error("延长热点数据过期时间失败", e);
+            }
+        }, 1, 1, TimeUnit.MINUTES);
+
+        log.info("热点数据监控已启动");
+    }
+
+    /**
+     * 延长热点数据的过期时间
+     */
+    private void extendHotspotExpire() {
+        // 获取所有热点 key
+        List<String> hotKeys = hotspotDetectionService.getHotKeys(100);
+
+        for (String key : hotKeys) {
+            // 获取剩余过期时间
+            Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+
+            // 如果剩余时间小于 10 分钟，延长到 1 小时
+            if (ttl != null && ttl < 600) {
+                redisTemplate.expire(key, 1, TimeUnit.HOURS);
+                log.info("热点数据过期时间已延长 - key: {}", key);
+            }
+        }
+    }
+}
+
+/**
+ * 秒杀场景热点处理
+ */
+@Service
+@Slf4j
+public class SeckillHotspotService {
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ProductMapper productMapper;
+
+    private static final String SECKILL_STOCK_PREFIX = "seckill:stock:";
+
+    /**
+     * 秒杀商品预热
+     */
+    @CacheWarmup
+    public void warmUpSeckillProduct(Long productId, int stock) {
+        String key = SECKILL_STOCK_PREFIX + productId;
+
+        // 预热库存到 Redis
+        redisTemplate.opsForValue().set(key, stock);
+
+        log.info("秒杀商品已预热 - productId: {}, stock: {}", productId, stock);
+    }
+
+    /**
+     * 秒杀（使用 Lua 脚本保证原子性）
+     */
+    public boolean seckill(Long productId, Long userId) {
+        String script =
+            "local stock = redis.call('get', KEYS[1]) " +
+            "if tonumber(stock) > 0 then " +
+            "    redis.call('decr', KEYS[1]) " +
+            "    return 1 " +
+            "else " +
+            "    return 0 " +
+            "end";
+
+        String key = SECKILL_STOCK_PREFIX + productId;
+
+        Long result = redisTemplate.execute(
+            new DefaultRedisScript<>(script, Long.class),
+            Collections.singletonList(key)
+        );
+
+        if (result != null && result == 1) {
+            log.info("秒杀成功 - productId: {}, userId: {}", productId, userId);
+            return true;
+        } else {
+            log.warn("秒杀失败，库存不足 - productId: {}, userId: {}", productId, userId);
+            return false;
+        }
+    }
+}`}
+        />
+
+        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-6 rounded-lg mb-6 mt-8">
+          <h4 className="font-bold text-gray-900 mb-2">⚠️ 热点数据处理总结</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className="bg-white p-4 rounded border border-yellow-200">
+              <h5 className="font-bold text-gray-900 mb-2">🔍 发现阶段</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>• ZSet 访问计数</li>
+                <li>• AOP 拦截统计</li>
+                <li>• 日志分析</li>
+                <li>• 监控告警</li>
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded border border-yellow-200">
+              <h5 className="font-bold text-gray-900 mb-2">🛡️ 处理阶段</h5>
+              <ul className="text-xs text-gray-700 space-y-1">
+                <li>• 本地缓存（Caffeine）</li>
+                <li>• 永不过期策略</li>
+                <li>• 限流降级</li>
+                <li>• 过期时间自动延长</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 下一步学习 */}
       <section className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-8 rounded-lg">
-        <h2 className="text-2xl font-bold mb-4">🎯 掌握了 Redis,下一步学习什么?</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <NextStepCard2 title="微服务拆分" description="服务拆分原则" link="/service-decomposition" icon="🔪" />
           <NextStepCard2 title="可观测性" description="监控与链路追踪" link="/observability" icon="📊" />
