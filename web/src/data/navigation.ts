@@ -77,6 +77,7 @@ export const navigationData: NavGroup[] = [
     items: [
       { label: 'Docker 部署', path: '/docker-deployment', pageId: 'docker-deployment', level: 'intermediate' },
       { label: 'Kubernetes 部署', path: '/k8s-deployment', pageId: 'k8s-deployment', level: 'architect' },
+      { label: 'Service Mesh 实战', path: '/service-mesh', pageId: 'service-mesh', level: 'architect' },
       { label: 'CI/CD 流水线', path: '/cicd', pageId: 'cicd', level: 'intermediate' },
       { label: '监控告警体系', path: '/monitoring', pageId: 'monitoring', level: 'architect' },
       { label: '日志聚合分析', path: '/logging', pageId: 'logging', level: 'intermediate' },
@@ -98,6 +99,7 @@ export const navigationData: NavGroup[] = [
     description: '代码规范与开发经验',
     items: [
       { label: '代码规范', path: '/code-standards', pageId: 'code-standards', level: 'beginner' },
+      { label: 'API 设计规范', path: '/api-design', pageId: 'api-design', level: 'intermediate' },
       { label: '配置管理', path: '/config-management', pageId: 'config-management', level: 'intermediate' },
       { label: '异常处理', path: '/exception-handling', pageId: 'exception-handling', level: 'intermediate' },
       { label: '测试策略', path: '/testing-strategy', pageId: 'testing-strategy', level: 'intermediate' },

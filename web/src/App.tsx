@@ -24,6 +24,7 @@ import { DisasterRecoveryPage } from './pages/DisasterRecoveryPage';
 import { ConfigAdvancedPage } from './pages/ConfigAdvancedPage';
 import { DockerDeploymentPage } from './pages/DockerDeploymentPage';
 import { K8sDeploymentPage } from './pages/K8sDeploymentPage';
+import { ServiceMeshPage } from './pages/ServiceMeshPage';
 import { CicdPage } from './pages/CicdPage';
 import { MonitoringPage } from './pages/MonitoringPage';
 import { LoggingPage } from './pages/LoggingPage';
@@ -39,6 +40,7 @@ import { InterviewQuestionsPage } from './pages/InterviewQuestionsPage';
 import { DesignQuestionsPage } from './pages/DesignQuestionsPage';
 import { SystemDesignPage } from './pages/SystemDesignPage';
 import { CodeStandardsPage } from './pages/CodeStandardsPage';
+import { ApiDesignPage } from './pages/ApiDesignPage';
 import { ConfigManagementPage } from './pages/ConfigManagementPage';
 import { ExceptionHandlingPage } from './pages/ExceptionHandlingPage';
 import { TestingStrategyPage } from './pages/TestingStrategyPage';
@@ -83,6 +85,7 @@ function App() {
           {/* 生产实践 */}
           <Route path="/docker-deployment" element={<DockerDeploymentPage />} />
           <Route path="/k8s-deployment" element={<K8sDeploymentPage />} />
+          <Route path="/service-mesh" element={<ServiceMeshPage />} />
           <Route path="/cicd" element={<CicdPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/logging" element={<LoggingPage />} />
@@ -104,6 +107,7 @@ function App() {
 
           {/* 最佳实践 */}
           <Route path="/code-standards" element={<CodeStandardsPage />} />
+          <Route path="/api-design" element={<ApiDesignPage />} />
           <Route path="/config-management" element={<ConfigManagementPage />} />
           <Route path="/exception-handling" element={<ExceptionHandlingPage />} />
           <Route path="/testing-strategy" element={<TestingStrategyPage />} />

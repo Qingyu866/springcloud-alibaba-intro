@@ -1,14 +1,31 @@
 import { useState } from 'react';
 import { CodeBlock } from '../components';
 
-interface IssueCardProps {
+interface MethodCardProps {
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+const MethodCard: React.FC<MethodCardProps> = ({ title, description, icon, color }) => (
+  <div className={`${color} border-2 rounded-lg p-5`}>
+    <div className="flex items-center gap-3 mb-3">
+      <span className="text-3xl">{icon}</span>
+      <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+    </div>
+    <p className="text-sm text-gray-700">{description}</p>
+  </div>
+);
+
+interface CaseCardProps {
   title: string;
   symptoms: string[];
   icon: string;
   color: string;
 }
 
-const IssueCard: React.FC<IssueCardProps> = ({ title, symptoms, icon, color }) => (
+const CaseCard: React.FC<CaseCardProps> = ({ title, symptoms, icon, color }) => (
   <div className={`${color} border-2 rounded-lg p-5`}>
     <div className="flex items-center gap-3 mb-3">
       <span className="text-3xl">{icon}</span>
@@ -22,6 +39,25 @@ const IssueCard: React.FC<IssueCardProps> = ({ title, symptoms, icon, color }) =
         </li>
       ))}
     </ul>
+  </div>
+);
+
+interface ProcessStepProps {
+  step: number;
+  title: string;
+  description: string;
+  color: string;
+}
+
+const ProcessStep: React.FC<ProcessStepProps> = ({ step, title, description, color }) => (
+  <div className="flex items-start gap-4">
+    <div className={`${color} text-white rounded-full w-10 h-10 flex items-center justify-center font-bold flex-shrink-0 text-lg`}>
+      {step}
+    </div>
+    <div className="flex-1">
+      <h4 className="font-bold text-gray-900 text-lg mb-1">{title}</h4>
+      <p className="text-sm text-gray-700">{description}</p>
+    </div>
   </div>
 );
 
@@ -64,594 +100,1229 @@ export const TroubleshootingPage: React.FC = () => {
       <div className="bg-gradient-to-r from-red-700 to-red-900 text-white rounded-lg p-6 mb-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2">故障排查</h1>
-            <p className="text-red-100 text-lg">生产环境常见问题诊断与解决</p>
+            <h1 className="text-4xl font-bold mb-2">故障排查实战</h1>
+            <p className="text-red-100 text-lg">生产环境故障诊断与应急响应指南</p>
           </div>
           <div className="flex gap-3 text-sm">
-            <span className="px-3 py-1 bg-white/20 rounded-full">🔧 中级</span>
-            <span className="px-3 py-1 bg-white/20 rounded-full">⏱️ 约50分钟</span>
-            <span className="px-3 py-1 bg-white/20 rounded-full">📚 9个知识点</span>
+            <span className="px-3 py-1 bg-white/20 rounded-full">🔧 高级</span>
+            <span className="px-3 py-1 bg-white/20 rounded-full">⏱️ 约90分钟</span>
+            <span className="px-3 py-1 bg-white/20 rounded-full">📚 实战导向</span>
           </div>
         </div>
       </div>
 
+      {/* Chapter 1: 故障排查方法论 */}
       <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">常见故障类型</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+          <span className="bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center">1</span>
+          故障排查方法论
+        </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <IssueCard
-            title="服务启动失败"
-            symptoms={[
-              "服务无法启动，端口冲突",
-              "依赖服务连接失败",
-              "配置文件错误"
-            ]}
-            icon="🚫"
-            color="bg-red-50 border-red-200"
-          />
-          <IssueCard
-            title="服务响应超时"
-            symptoms={[
-              "API 调用超时",
-              "数据库查询慢",
-              "网络延迟高"
-            ]}
-            icon="⏱️"
-            color="bg-yellow-50 border-yellow-200"
-          />
-          <IssueCard
-            title="内存溢出 OOM"
-            symptoms={[
-              "OutOfMemoryError",
-              "频繁 Full GC",
-              "服务重启或崩溃"
-            ]}
-            icon="💾"
-            color="bg-purple-50 border-purple-200"
-          />
-          <IssueCard
-            title="CPU 100%"
-            symptoms={[
-              "CPU 使用率持续高位",
-              "响应缓慢",
-              "线程死锁"
-            ]}
-            icon="🖥️"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <MethodCard
+            title="5 Why 分析法"
+            description="通过连续追问5个为什么，找到问题的根本原因"
+            icon="❓"
             color="bg-blue-50 border-blue-200"
           />
-          <IssueCard
-            title="数据库连接池耗尽"
-            symptoms={[
-              "获取连接超时",
-              "ConnectionPool Exhausted",
-              "大量等待连接的请求"
-            ]}
-            icon="🗄️"
+          <MethodCard
+            title="鱼骨图分析"
+            description="从人机料法环六个维度系统分析问题"
+            icon="🐟"
             color="bg-green-50 border-green-200"
           />
-          <IssueCard
-            title="消息队列积压"
-            symptoms={[
-              "消息消费延迟",
-              "消费者异常",
-              "队列消息堆积"
-            ]}
-            icon="📨"
-            color="bg-orange-50 border-orange-200"
+          <MethodCard
+            title="根因分析 RCA"
+            description="系统化的因果分析，识别根本原因"
+            icon="🔍"
+            color="bg-purple-50 border-purple-200"
+          />
+          <MethodCard
+            title="故障时间线"
+            description="按时间轴还原故障发生过程"
+            icon="📅"
+            color="bg-yellow-50 border-yellow-200"
           />
         </div>
-      </section>
 
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">1. 服务注册发现问题</h2>
-
-        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">问题：服务无法注册到 Nacos</h3>
-          <CodeBlock
-            language="yaml"
-            code={`【症状】
-- Nacos 控制台看不到服务实例
-- 服务调用时报错 "No instances available"
-- 日志显示 "register failed"
-
-【排查步骤】
-
-1. 检查 Nacos 地址配置
-   spring:
-     cloud:
-       nacos:
-         discovery:
-           server-addr: nacos-server:8848  # 确认地址正确
-
-2. 检查网络连通性
-   curl http://nacos-server:8848/nacos/v1/ns/instance/list?serviceName=order-service
-
-3. 查看服务日志
-   tail -f /var/log/apps/order-service/all.log | grep -i nacos
-
-4. 验证命名空间配置
-   spring:
-     cloud:
-       nacos:
-         discovery:
-           namespace: production  # 确保命名空间一致
-
-【解决方案】
-
-方案1: 检查 Nacos 服务器状态
-# 查看集群健康状态
-curl http://nacos-server:8848/nacos/v1/console/health/readiness
-
-方案2: 增加重试次数和超时时间
-spring:
-  cloud:
-    nacos:
-      discovery:
-        heart-beat-interval: 5000      # 心跳间隔5秒
-        heart-beat-timeout: 15000      # 心跳超时15秒
-        ip-delete-timeout: 30000       # IP删除超时30秒
-
-方案3: 关闭安全认证（开发环境）
-nacos:
-  discovery:
-    username: nacos
-    password: nacos
-
-【预防措施】
-✓ 配置健康检查端点
-✓ 设置合理的超时和重试参数
-✓ 监控 Nacos 集群状态
-✓ 定期检查服务注册状态`}
-          />
-        </div>
-      </section>
-
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">2. 配置中心问题</h2>
-
-        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
-          <CodeBlock
-            language="yaml"
-            code={`【问题】配置无法从 Nacos Config 获取
-
-【症状】
-- 应用启动失败，提示 "config data not found"
-- 配置更新不生效
-- 获取到旧配置
-
-【排查步骤】
-
-1. 检查 DataId 格式
-   # 格式: $\{spring.application.name\}-$\{profile\}.yaml
-   # 示例: order-service-prod.yaml
-
-2. 验证命名空间和 Group
-   spring:
-     cloud:
-       nacos:
-         config:
-           server-addr: nacos-server:8848
-           namespace: production
-           group: DEFAULT_GROUP
-           file-extension: yaml
-
-3. 查看 Nacos 配置列表
-   # 登录 Nacos 控制台
-   # 配置管理 -> 配置列表 -> 检查 DataId 是否存在
-
-【解决方案】
-
-方案1: 自动刷新配置
-@RefreshScope  // 添加该注解使配置热更新
-@RestController
-public class ConfigController {
-    @Value("\${app.config}")
-    private String config;
-}
-
-方案2: 配置文件导入
-# Nacos 控制台 -> 导入配置
-# 支持 ZIP 批量导入
-
-方案3: 共享配置
-spring:
-  cloud:
-    nacos:
-      config:
-        shared-configs:
-          - data-id: common-db.yaml
-            group: DEFAULT_GROUP
-            refresh: true
-
-【配置最佳实践】
-✓ DataId 命名规范：\$\{name\}-\$\{profile\}.\${extension}
-✓ 使用命名空间隔离环境
-✓ 敏感配置使用加密
-✓ 关键配置添加备份`}
-          />
-        </div>
-      </section>
-
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">3. 调用链路超时</h2>
-
-        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">OpenFeign 调用超时配置</h3>
-          <CodeBlock
-            language="yaml"
-            code={`【问题】Feign 调用超时 ReadTimedOut
-
-【症状】
-- feign.RetryableException: Read timed out
-- 间歇性超时，不稳定
-- 负载高时更容易超时
-
-【排查步骤】
-
-1. 查看调用链路耗时
-   # SkyWalking / Zipkin 追踪链路
-   # 找出耗时最长的服务
-
-2. 检查下游服务响应时间
-   curl -w "@curl-format.txt" http://order-service/api/orders/123
-
-3. 分析网络延迟
-   ping order-service
-   traceroute order-service
-
-【解决方案】
-
-方案1: 调整超时配置
-feign:
-  client:
-    config:
-      default:
-        connectTimeout: 5000    # 连接超时5秒
-        readTimeout: 10000      # 读取超时10秒
-        loggerLevel: basic
-
-  # 特定服务配置
-      order-service:
-        connectTimeout: 3000
-        readTimeout: 30000      # 复杂查询允许更长
-
-方案2: 启用 Hystrix/Sentinel 熔断
-# Sentinel 配置
-spring:
-  cloud:
-    sentinel:
-      transport:
-        dashboard: sentinel-dashboard:8080
-
-# 降级规则
-@SentinelResource(
-    value = "getOrder",
-    blockHandler = "handleBlock",
-    fallback = "handleFallback"
-)
-
-方案3: 优化下游服务
-- 添加数据库索引
-- 使用 Redis 缓存
-- 异步处理非核心逻辑
-- 分页查询避免大结果集
-
-【性能优化】
-✓ 使用连接池（HttpClient）
-✓ 启用请求/响应压缩
-✓ 合理设置超时时间
-✓ 实现幂等性支持重试`}
-          />
-        </div>
-      </section>
-
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">4. 内存溢出诊断</h2>
-
-        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">5 Why 分析法实战案例</h3>
           <CodeBlock
             language="bash"
-            code={`【问题】java.lang.OutOfMemoryError: Java heap space
+            code={`【问题场景】订单服务突然崩溃，大量 500 错误
 
-【症状】
-- 服务频繁重启
-- 日志显示 OutOfMemoryError
-- 响应越来越慢
+【第1个Why】为什么订单服务崩溃？
+→ 因为发生了 OutOfMemoryError
+
+【第2个Why】为什么会内存溢出？
+→ 因为 JVM 堆内存被占满，无法分配新对象
+
+【第3个Why】为什么堆内存被占满？
+→ 因为有一个 Map 对象持续增长，包含数百万条记录
+
+【第4个Why】为什么 Map 会持续增长？
+→ 因为代码中使用了静态 Map 缓存订单数据，但没有清理过期条目
+
+【第5个Why】为什么没有清理机制？
+→ 因为开发时为了快速上线，直接使用本地缓存，未考虑容量限制
+
+【根本原因】
+缺少缓存淘汰策略，使用无限增长的本地缓存
+
+【解决方案】
+1. 立即修复：切换到 Redis 等带过期策略的缓存
+2. 长期优化：引入 Caffeine 并配置 maximumSize 和 expireAfterWrite
+3. 流程改进：代码审查增加缓存方案检查项`}
+          />
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">鱼骨图分析法（人机料法环）</h3>
+          <CodeBlock
+            language="bash"
+            code={`【问题】数据库查询响应时间从 100ms 慢到 5s
+
+【人 - 人员因素】
+✓ 新人入职未进行性能优化培训
+✓ 缺少 SQL 审核流程
+✓ 开发人员对索引理解不足
+
+【机 - 工具因素】
+✓ 数据库服务器 CPU 使用率 90%
+✓ 磁盘 I/O 瓶颈（HDD 而非 SSD）
+✓ 连接池配置过小（最大 10 个连接）
+
+【料 - 数据因素】
+✓ 数据量从 10 万增长到 500 万
+✓ 单表超过 1000 万行
+✓ 历史数据未归档
+
+【法 - 方法因素】
+✓ 全表扫描 SELECT *
+✓ 未使用索引字段
+✓ N+1 查询问题
+
+【环 - 环境因素】
+✓ 测试环境数据量小，问题未暴露
+✓ 高峰期流量集中
+✓ 网络延迟增加
+
+【分析结论】
+主要原因：数据量增长 + 未建索引 + 查询不当
+次要原因：硬件性能不足 + 缺少审核流程
+
+【改进措施】
+1. 紧急：添加索引，优化慢查询
+2. 短期：数据归档，升级硬件
+3. 长期：建立 SQL 审核规范，性能测试流程`}
+          />
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">根因分析（RCA）报告模板</h3>
+          <CodeBlock
+            language="bash"
+            code={`【故障时间线】
+2024-01-15 10:23:15  监控告警：订单服务错误率超过 5%
+2024-01-15 10:23:30  确认：所有订单查询接口返回 500
+2024-01-15 10:24:00  初步定位：数据库连接池耗尽
+2024-01-15 10:25:30  根因分析：慢查询导致连接长时间占用
+2024-01-15 10:26:00  临时措施：重启应用服务
+2024-01-15 10:26:30  服务恢复
+2024-01-15 11:00:00  根本修复：添加索引，优化查询
+
+【故障影响】
+- 影响：订单查询、订单列表、订单详情功能
+- 用户：约 2000 名用户受影响
+- 时长：3 分钟服务不可用，2 分钟部分功能异常
+- 损失：约 50 笔订单流失
+
+【根本原因】
+技术层面：
+- orders 表新增字段 status，未添加索引
+- 查询条件 WHERE status = 'pending' 全表扫描
+- 500 万数据量，单次查询 3-5 秒
+
+管理层面：
+- 变更缺少代码审查
+- 未进行性能测试
+- 缺少慢查询监控
+
+【改进措施】
+技术改进：
+1. 添加索引：CREATE INDEX idx_status ON orders(status)
+2. 优化查询：SELECT * 改为 SELECT 具体字段
+3. 连接池配置：增加最大连接数到 50
+4. 监控告警：添加慢查询告警（>1秒）
+
+流程改进：
+1. 建立代码审查 Checklist
+2. SQL 变更必须通过 EXPLAIN 分析
+3. 性能测试环境数据量与生产一致
+4. 数据库变更必须 DBA 审批
+
+【经验教训】
+✓ 小改动也可能引发大问题
+✓ 数据量增长需要定期索引优化
+✓ 必须有完整的变更流程和审核机制`}
+          />
+        </div>
+      </section>
+
+      {/* Chapter 2: 常见故障案例 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+          <span className="bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center">2</span>
+          常见故障案例
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <CaseCard
+            title="内存溢出 OOM"
+            symptoms={[
+              "java.lang.OutOfMemoryError",
+              "频繁 Full GC",
+              "服务突然崩溃",
+              "响应越来越慢"
+            ]}
+            icon="💾"
+            color="bg-red-50 border-red-200"
+          />
+          <CaseCard
+            title="死锁问题"
+            symptoms={[
+              "数据库 deadlock",
+              "事务超时",
+              "请求hang住",
+              "CPU 正常但无响应"
+            ]}
+            icon="🔒"
+            color="bg-yellow-50 border-yellow-200"
+          />
+          <CaseCard
+            title="慢查询"
+            symptoms={[
+              "接口响应慢",
+              "数据库 CPU 高",
+              "连接池耗尽",
+              "用户体验差"
+            ]}
+            icon="🐌"
+            color="bg-blue-50 border-blue-200"
+          />
+        </div>
+
+        {/* 案例1: OOM 分析 */}
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">案例1：OOM 内存溢出排查</h3>
+          <CodeBlock
+            language="bash"
+            code={`【故障现象】
+订单服务运行 2 小时后崩溃，日志显示：
+java.lang.OutOfMemoryError: Java heap space
 
 【诊断步骤】
 
-1. 查看内存使用情况
-   jps -l                          # 找到 Java 进程 PID
-   jmap -heap <pid>                # 查看 heap 使用情况
-   jstat -gcutil <pid> 1000        # 实时监控 GC
+1. 启用 JVM 内存参数
+java -Xms2g -Xmx4g \\
+     -XX:+HeapDumpOnOutOfMemoryError \\
+     -XX:HeapDumpPath=/var/log/heap/ \\
+     -XX:+UseG1GC \\
+     -jar order-service.jar
 
-2. 导出堆转储文件
-   jmap -dump:format=b,file=heap.hprof <pid>
-   # 或配置 OOM 时自动导出
-   -XX:+HeapDumpOnOutOfMemoryError
-   -XX:HeapDumpPath=/var/log/heap/
+2. 分析 heap dump 文件
+# 使用 Eclipse MAT 打开 heap.hprof
 
-3. 使用 MAT 分析 heap.hprof
-   # Eclipse Memory Analyzer Tool
-   # 查找大对象、内存泄漏
+# 查看 Leak Suspects（疑似内存泄漏）
+MAT 自动分析报告：
+- Problem Suspect 1: 类 OrderCache 占用 75% 堆内存
+- 占用对象: 3,500,000 个 Order 对象
+- 保留大小: 2.8 GB
 
-【常见原因】
+3. 查看对象引用链
+Dominator Tree -> OrderCache -> ConcurrentHashMap
+  -> 保留大小 2.8GB
+  -> 被 com.company.OrderManager 静态变量引用
 
-1. 内存泄漏
-   - 静态集合不断增长
-   - 未关闭的资源（连接、流）
-   - 缓存无限增长
+【根因定位】
+public class OrderManager {
+    // 问题：静态 Map 永不回收，无上限
+    private static final Map<String, Order> cache = new ConcurrentHashMap<>();
 
-2. 大对象分配
-   - 一次性加载大数据
-   - 不合理的查询结果
-
-3. 内存配置不足
-   - -Xmx 太小
-
-【解决方案】
-
-方案1: 增加 JVM 内存
-java -Xms2g -Xmx4g -XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=512m
-
-方案2: 优化缓存策略
-@Configuration
-public class CacheConfig {
-    @Bean
-    public CacheManager cacheManager() {
-        CaffeineCacheManager manager = new CaffeineCacheManager();
-        manager.setCaffeine(Caffeine.newBuilder()
-            .maximumSize(10000)         // 最大缓存数
-            .expireAfterWrite(10, TimeUnit.MINUTES)  // 10分钟过期
-            .weakKeys()                 // 弱引用键
-            .recordStats());
-        return manager;
+    public void cacheOrder(Order order) {
+        cache.put(order.getId(), order);  // 只增不减
     }
 }
 
-方案3: 分页查询
-// 错误：一次性加载所有数据
-List<Order> orders = orderMapper.selectAll();
+【解决方案】
 
-// 正确：分页查询
-Page<Order> page = new Page<>(currentPage, pageSize);
-List<Order> orders = orderMapper.selectPage(page, null);
+方案1：使用 Caffeine 带过期策略
+@Configuration
+public class CacheConfig {
+    @Bean
+    public Cache<String, Order> orderCache() {
+        return Caffeine.newBuilder()
+            .maximumSize(10000)              // 最大 10000 条
+            .expireAfterWrite(10, TimeUnit.MINUTES)  // 10分钟过期
+            .weakKeys()                      // 弱引用键
+            .recordStats()                   // 统计信息
+            .build();
+    }
+}
 
-【GC 优化】
--XX:+UseG1GC                     # 使用 G1 垃圾回收器
--XX:MaxGCPauseMillis=200         # 最大 GC 暂停时间
--XX:G1ReservePercent=10          # 保留堆内存百分比`}
+方案2：使用 Redis 分布式缓存
+@Autowired
+private RedisTemplate<String, Order> redisTemplate;
+
+public void cacheOrder(Order order) {
+    redisTemplate.opsForValue().set(
+        "order:" + order.getId(),
+        order,
+        10,
+        TimeUnit.MINUTES
+    );
+}
+
+方案3：Guava LoadingCache
+LoadingCache<String, Order> cache = CacheBuilder.newBuilder()
+    .maximumSize(10000)
+    .expireAfterWrite(10, TimeUnit.MINUTES)
+    .removalListener(notification -> {
+        logger.info("Cache evicted: {}", notification.getKey());
+    })
+    .build(new CacheLoader<String, Order>() {
+        public Order load(String id) {
+            return orderRepository.findById(id);
+        }
+    });
+
+【预防措施】
+1. 代码审查检查缓存策略
+2. 监控 JVM 内存使用率
+3. 设置堆内存告警（>80%）
+4. 定期分析 heap dump（每周）
+5. 使用 MAT 工具自动化分析`}
           />
         </div>
-      </section>
 
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">5. 数据库连接池问题</h2>
-
-        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+        {/* 案例2: 死锁排查 */}
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">案例2：数据库死锁排查</h3>
           <CodeBlock
-            language="yaml"
-            code={`【问题】数据库连接池耗尽
-
-【症状】
-- java.sql.SQLTransientConnectionException:
-  HikariPool-1 - Connection is not available
-- 大量请求等待获取连接
-- 数据库响应慢
+            language="bash"
+            code={`【故障现象】
+日志显示大量 deadlock 异常：
+MySQLTransactionRollbackException: Deadlock found when trying to get lock
 
 【诊断步骤】
 
-1. 查看连接池状态
-   # actuator 端点
-   curl http://order-service/actuator/hikaricp
+1. 查看死锁日志
+# MySQL 命令
+SHOW ENGINE INNODB STATUS;
 
-2. 查看数据库连接数
-   SHOW PROCESSLIST;
-   SHOW STATUS LIKE 'Threads_connected';
+# 输出示例
+------------------------
+LATEST DETECTED DEADLOCK
+------------------------
+2024-01-15 14:23:15
+*** (1) TRANSACTION:
+TRANSACTION 12345, ACTIVE 5 sec starting index read
+mysql tables in use 1, locked 1
+LOCK WAIT 2 lock struct(s), heap size 1136
+MySQL thread id 100, OS thread handle 1234567
+*** (1) WAITING FOR THIS LOCK TO BE GRANTED:
+RECORD LOCKS space id 100 page no 500 n bits 72
+PRIMARY of table \`orders\`
+*** (2) TRANSACTION:
+TRANSACTION 12346, ACTIVE 3 sec starting index read
+mysql tables in use 1, locked 1
+2 lock struct(s), heap size 1136
+*** (2) HOLDING THE LOCK(S):
+RECORD LOCKS space id 100 page no 500 n bits 72
+PRIMARY of table \`orders\`
 
-3. 检查慢查询
-   SHOW FULL PROCESSLIST;
-   # 查看 Time 和 State 列
+2. 分析死锁场景
+事务 A:
+START TRANSACTION;
+UPDATE orders SET status = 'PAID' WHERE id = 100;  -- 持有锁 A
+-- 等待锁 B
+UPDATE orders SET status = 'SHIPPED' WHERE id = 200;
 
-【常见原因】
+事务 B:
+START TRANSACTION;
+UPDATE orders SET status = 'SHIPPED' WHERE id = 200;  -- 持有锁 B
+-- 等待锁 A
+UPDATE orders SET status = 'PAID' WHERE id = 100;
 
-1. 连接未释放
-   - 忘记关闭 Connection/Statement
-   - 异常时未释放资源
+结果：A 等 B，B 等 A → 死锁
 
-2. 连接池配置不当
-   - maximumPoolSize 太小
-   - connectionTimeout 太短
+【根因定位】
+问题代码：
+@Transactional
+public void updateOrderBatch(List<Long> orderIds) {
+    for (Long id : orderIds) {
+        // 问题：顺序不一致可能导致死锁
+        Order order = orderRepository.findById(id).orElseThrow();
+        order.setStatus(status);
+        orderRepository.save(order);
+    }
+}
 
-3. 慢查询占用连接
-   - 缺少索引
-   - 全表扫描
+调用方：
+线程1: updateOrderBatch(Arrays.asList(100L, 200L));  // 100 -> 200
+线程2: updateOrderBatch(Arrays.asList(200L, 100L));  // 200 -> 100
+→ 可能死锁！
 
 【解决方案】
 
-方案1: 优化连接池配置
-spring:
-  datasource:
-    hikari:
-      maximum-pool-size: 20           # 最大连接数
-      minimum-idle: 5                 # 最小空闲连接
-      connection-timeout: 30000       # 连接超时30秒
-      idle-timeout: 600000            # 空闲超时10分钟
-      max-lifetime: 1800000           # 连接最大生命周期30分钟
-      leak-detection-threshold: 60000 # 连接泄漏检测（60秒）
+方案1：统一加锁顺序
+@Transactional
+public void updateOrderBatch(List<Long> orderIds) {
+    // 关键：排序确保顺序一致
+    List<Long> sortedIds = orderIds.stream()
+        .sorted()
+        .collect(Collectors.toList());
 
-方案2: 使用 try-with-resources
-// 确保资源自动关闭
-try (Connection conn = dataSource.getConnection();
-     PreparedStatement ps = conn.prepareStatement(sql)) {
-    // 执行查询
+    for (Long id : sortedIds) {
+        Order order = orderRepository.findById(id).orElseThrow();
+        order.setStatus(status);
+        orderRepository.save(order);
+    }
 }
 
-方案3: 优化 SQL
--- 添加索引
+方案2：使用悲观锁
+@Transactional
+public void updateOrder(Long id) {
+    // SELECT ... FOR UPDATE 加行锁
+    Order order = orderRepository.findByIdWithLock(id)
+        .orElseThrow();
+    order.setStatus(status);
+    orderRepository.save(order);
+}
+
+Repository:
+@Lock(LockModeType.PESSIMISTIC_WRITE)
+@Query("SELECT o FROM Order o WHERE o.id = :id")
+Optional<Order> findByIdWithLock(@Param("id") Long id);
+
+方案3：乐观锁（推荐）
+@Entity
+public class Order {
+    @Id
+    private Long id;
+
+    @Version  // JPA 乐观锁版本号
+    private Integer version;
+
+    private String status;
+}
+
+@Service
+public class OrderService {
+    @Transactional
+    public void updateOrder(Long id, String newStatus) {
+        Order order = orderRepository.findById(id).orElseThrow();
+        order.setStatus(newStatus);
+        // JPA 自动检查 version，冲突抛出 OptimisticLockException
+        orderRepository.save(order);
+    }
+}
+
+方案4：使用队列串行化
+@Component
+public class OrderUpdateQueue {
+    private final BlockingQueue<OrderUpdateTask> queue =
+        new LinkedBlockingQueue<>();
+
+    @Async
+    public void processUpdates() {
+        while (true) {
+            try {
+                OrderUpdateTask task = queue.take();
+                updateOrder(task);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    @Transactional
+    private void updateOrder(OrderUpdateTask task) {
+        // 单线程顺序执行，避免死锁
+        orderRepository.updateStatus(
+            task.getOrderId(),
+            task.getStatus()
+        );
+    }
+}
+
+【预防措施】
+1. 数据库操作保持顺序一致
+2. 事务尽可能小，快速提交
+3. 避免长时间事务
+4. 使用乐观锁代替悲观锁
+5. 监控死锁告警
+6. 死锁重试机制（注意幂等性）`}
+          />
+        </div>
+
+        {/* 案例3: 慢查询优化 */}
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">案例3：慢查询优化实战</h3>
+          <CodeBlock
+            language="bash"
+            code={`【故障现象】
+订单列表接口响应时间：3-5 秒
+用户投诉：页面加载太慢
+
+【诊断步骤】
+
+1. 开启慢查询日志
+-- MySQL 配置
+SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL long_query_time = 1;  -- 1秒以上记录
+SET GLOBAL log_queries_not_using_indexes = 'ON';
+
+2. 查看慢查询日志
+# /var/log/mysql/mysql-slow.log
+
+# Time: 2024-01-15T10:23:15.123456Z
+# User@Host: app[app] @  [10.0.0.5]
+# Query_time: 4.567890  Lock_time: 0.000123 Rows_sent: 20  Rows_examined: 5000000
+SET timestamp=1705310595;
+SELECT * FROM orders WHERE user_id = 12345 ORDER BY create_time DESC LIMIT 20;
+
+关键信息：
+- Query_time: 4.57 秒
+- Rows_examined: 扫描 500 万行！
+- Rows_sent: 返回 20 行
+
+3. 使用 EXPLAIN 分析执行计划
+EXPLAIN SELECT * FROM orders WHERE user_id = 12345;
+
+结果：
++----+-------------+--------+------+---------------+------+---------+------+---------+-------------+
+| id | select_type | table  | type | possible_keys | key  | key_len | ref  | rows    | Extra       |
++----+-------------+--------+------+---------------+------+---------+------+---------+-------------+
+|  1 | SIMPLE      | orders | ALL  | NULL          | NULL | NULL    | NULL | 5000000 | Using where |
++----+-------------+--------+------+---------------+------+---------+------+---------+-------------+
+问题：type=ALL（全表扫描），key=NULL（未用索引）
+
+【问题分析】
+1. user_id 字段没有索引
+2. SELECT * 返回所有列（包括大字段）
+3. 数据量 500 万，全表扫描慢
+
+【解决方案】
+
+方案1：添加索引
 CREATE INDEX idx_user_id ON orders(user_id);
+CREATE INDEX idx_user_create ON orders(user_id, create_time);  -- 联合索引
 
--- 优化查询
-SELECT * FROM orders WHERE user_id = ? LIMIT 100;
+验证：
+EXPLAIN SELECT * FROM orders WHERE user_id = 12345;
++----+-------------+--------+-------+------------------+------------------+---------+-------+------+-------------+
+| id | select_type | table  | type  | possible_keys    | key              | key_len | ref   | rows | Extra       |
++----+-------------+--------+-------+------------------+------------------+---------+-------+------+-------------+
+|  1 | SIMPLE      | orders | ref   | idx_user_create  | idx_user_create  | 8       | const |  50  | Using where |
++----+-------------+--------+-------+------------------+------------------+---------+-------+------+-------------+
+优化：从扫描 500 万行 → 50 行！
 
--- 使用 EXPLAIN 分析
-EXPLAIN SELECT * FROM orders WHERE ...
+方案2：优化查询（只查询需要的列）
+-- 错误
+SELECT * FROM orders WHERE user_id = ? LIMIT 20;
 
-【监控告警】
-✓ 监控 active 连接数
-✓ 监控等待获取连接的线程数
-✓ 慢查询告警
-✓ 连接泄漏检测`}
+-- 正确
+SELECT id, order_no, status, total_amount, create_time
+FROM orders
+WHERE user_id = ?
+ORDER BY create_time DESC
+LIMIT 20;
+
+方案3：使用分页（避免大偏移量）
+-- 错误：深分页慢
+SELECT * FROM orders
+WHERE user_id = ?
+ORDER BY create_time DESC
+LIMIT 10000, 20;  -- 偏移 10000 行
+
+-- 正确：使用游标分页
+SELECT * FROM orders
+WHERE user_id = ? AND create_time < ?
+ORDER BY create_time DESC
+LIMIT 20;
+
+方案4：使用覆盖索引
+CREATE INDEX idx_user_cover ON orders(user_id, create_time, id, status, total_amount);
+
+-- 查询只需要索引包含的列，无需回表
+SELECT id, create_time, status, total_amount
+FROM orders
+WHERE user_id = 12345
+ORDER BY create_time DESC
+LIMIT 20;
+
+【优化效果】
+优化前：4.57 秒
+优化后：0.02 秒
+提升：228 倍！
+
+【预防措施】
+1. 所有 WHERE/JOIN/ORDER BY 字段建立索引
+2. 避免 SELECT *，明确列出字段
+3. 使用 EXPLAIN 分析慢查询
+4. 定期检查慢查询日志
+5. 使用分页避免大结果集
+6. 考虑使用 ES 处理复杂搜索`}
           />
         </div>
       </section>
 
+      {/* Chapter 3: 混沌工程 */}
       <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">故障排查工具箱</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+          <span className="bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center">3</span>
+          混沌工程（Chaos Engineering）
+        </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-5">
-            <h3 className="text-xl font-bold text-blue-900 mb-3">系统诊断命令</h3>
-            <CodeBlock
-              language="bash"
-              code={`# CPU 和内存
-top -p <pid>
-htop
-
-# JVM 信息
-jinfo -flags <pid>
-jstack -l <pid>          # 线程堆栈
-jmap -histo:live <pid>    # 对象统计
-
-# 网络诊断
-netstat -tlnp             # 监听端口
-ss -tlnp                  # 连接统计
-tcpdump -i eth0 port 8080 # 抓包
-
-# 磁盘 I/O
-iostat -x 1
-iotop
-
-# 文件描述符
-lsof -p <pid>             # 打开文件
-ulimit -n                 # 文件描述符限制`}
-            />
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-3">什么是混沌工程？</h3>
+          <p className="text-gray-700 mb-4">
+            混沌工程是在分布式系统中进行实验的学科，目的是建立对系统抵御生产环境中失控条件能力的信心。
+            通过主动注入故障（如延迟、错误、资源耗尽），验证系统的自愈能力和容错性。
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-lg border border-purple-200">
+              <h4 className="font-bold text-purple-900 mb-2">🎯 目标</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• 发现系统弱点</li>
+                <li>• 验证容错机制</li>
+                <li>• 提升系统韧性</li>
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-purple-200">
+              <h4 className="font-bold text-purple-900 mb-2">⚡ 实验</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• 注入故障</li>
+                <li>• 观察行为</li>
+                <li>• 改进系统</li>
+              </ul>
+            </div>
+            <div className="bg-white p-4 rounded-lg border border-purple-200">
+              <h4 className="font-bold text-purple-900 mb-2">🛡️ 价值</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• 减少生产事故</li>
+                <li>• 提升恢复速度</li>
+                <li>• 增强团队信心</li>
+              </ul>
+            </div>
           </div>
+        </div>
 
-          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-5">
-            <h3 className="text-xl font-bold text-green-900 mb-3">日志查询技巧</h3>
-            <CodeBlock
-              language="bash"
-              code={`# Kibana 查询
-level: "ERROR" AND app: "order-service"
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">Chaos Mesh 实战演示</h3>
+          <CodeBlock
+            language="yaml"
+            code={`# 安装 Chaos Mesh（Kubernetes 故障注入平台）
+kubectl apply -f https://mirrors.chaos-mesh.org/v0.20.0/install.yaml
 
-# 全链路追踪
-traceId: "a1b2c3d4"
+# 验证安装
+kubectl get pods -n chaos-mesh
 
-# 特定异常
-message: "NullPointerException"
+---
+# 实验1：Pod 故障注入（模拟服务崩溃）
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-test
+  namespace: production
+spec:
+  action: pod-kill           # 杀死 Pod
+  mode: one                  # 随机选择一个 Pod
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: order-service     # 选择 order-service
+  scheduler:                 # 在工作时间执行
+    cron: "@every 10min"
 
-# 时间范围
-@timestamp: >= "2024-01-01" AND @timestamp: <= "2024-01-31"
+---
+# 实验2：网络延迟注入（模拟网络慢）
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-test
+spec:
+  action: delay              # 延迟
+  mode: all                  # 所有 Pod
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: payment-service
+  delay:
+    latency: "2s"            # 延迟 2 秒
+    jitter: "100ms"          # 抖动 100ms
+    correlation: "50"        # 50% 相关性
+  direction: to              # 出方向延迟
 
-# Linux 日志分析
-grep "ERROR" /var/log/app.log
-tail -f /var/log/app.log | grep --line-buffered "ERROR"
-grep "order-id-123" app.log
+---
+# 实验3：模拟网络分区
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition-test
+spec:
+  action: partition          # 网络分区
+  mode: all
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: order-service
+  direction: both            # 双向隔离
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: inventory-service
+    mode: all
 
-# 统计 ERROR 数量
-grep -c "ERROR" app.log
+---
+# 实验4：磁盘压力（模拟 I/O 瓶颈）
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: disk-stress-test
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: database-service
+  stressors:
+    disk:
+      workers: 4             # 4 个工作线程
+      size: "1GB"            # 每个线程写入 1GB 数据
+  duration: "5m"             # 持续 5 分钟
 
-# 查找异常堆栈
-grep -A 20 "Exception" app.log`}
-            />
-          </div>
+---
+# 实验5：CPU 压力（模拟负载高）
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-test
+spec:
+  mode: all
+  selector:
+    labelSelectors:
+      app: order-service
+  stressors:
+    cpu:
+      workers: 4             # 4 个 CPU 密集任务
+      load: 90               # CPU 负载 90%
+  duration: "3m"
+
+---
+# 实验6：模拟数据库故障
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: database-fault-test
+spec:
+  action: pod-failure        # Pod 失败（不重启）
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: mysql
+  duration: "1m"             # 持续 1 分钟
+
+---
+# 实验7：HTTP 故障注入（模拟 API 错误）
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-fault-test
+spec:
+  mode: all
+  selector:
+    labelSelectors:
+      app: payment-service
+  port: 8080
+  target: Request
+  abort: true                # 中止请求
+  duration: "30s"`}
+          />
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">混沌工程实验流程</h3>
+          <CodeBlock
+            language="bash"
+            code={`【混沌工程五步法】
+
+步骤1：定义稳态假设
+- 假设：当 payment-service 故障时，order-service 应降级返回
+- 指标：订单创建成功率 > 95%
+- 监控：订单创建 QPS、错误率、响应时间
+
+步骤2：设计实验
+# 选择 Chaos Mesh 实验
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: payment-chaos
+spec:
+  action: pod-kill
+  mode: all
+  selector:
+    labelSelectors:
+      app: payment-service
+
+步骤3：运行实验
+kubectl apply -f payment-chaos.yaml
+
+# 观察系统行为
+kubectl get pods -w
+kubectl logs -f deployment/order-service
+
+步骤4：验证假设
+# 检查订单服务
+curl http://order-service/actuator/health
+curl http://order-service/api/orders \\
+  -X POST \\
+  -H "Content-Type: application/json" \\
+  -d '{"userId": 123, "items": [...]}'
+
+# 查看监控
+- Grafana 订单创建成功率：98%（满足 >95%）
+- Sentinel 降级日志：降级生效
+- 日志显示："Payment service unavailable, using fallback"
+
+步骤5：改进系统
+如果实验失败（如成功率 < 95%）：
+1. 分析原因：降级逻辑未生效
+2. 改进代码：添加 @SentinelResource fallback
+3. 重新实验：验证改进有效
+
+【混沌工程最佳实践】
+
+1. 从小规模开始
+   - 先在测试环境验证
+   - 再在生产环境小流量实验
+   - 逐步扩大范围
+
+2. 周期性实验
+   - 每周固定时间（如周五下午）
+   - 避开业务高峰期
+   - 自动化实验流程
+
+3. 建立熔断机制
+   - 实验导致严重问题时立即停止
+   - 设置健康检查阈值
+   - 自动回滚实验配置
+
+4. 记录实验结果
+   - 实验时间、故障类型
+   - 系统表现、监控数据
+   - 发现的问题、改进措施
+
+5. 文化建设
+   - 不责怪实验发现的问题
+   - 鼓励主动发现隐患
+   - 建立故障复盘机制`}
+          />
         </div>
       </section>
 
+      {/* Chapter 4: 应急响应流程 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+          <span className="bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center">4</span>
+          应急响应流程
+        </h2>
+
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">应急响应标准流程（SOP）</h3>
+
+          <div className="space-y-4">
+            <ProcessStep
+              step={1}
+              title="故障发现与报告"
+              description="监控告警触发，值班人员确认故障，评估影响范围"
+              color="bg-red-600"
+            />
+            <ProcessStep
+              step={2}
+              title="故障定级与响应"
+              description="根据影响范围定级（P0-P3），拉起应急响应团队"
+              color="bg-orange-600"
+            />
+            <ProcessStep
+              step={3}
+              title="快速止损与恢复"
+              description="优先恢复服务，再排查根因（重启、降级、回滚、扩容）"
+              color="bg-yellow-600"
+            />
+            <ProcessStep
+              step={4}
+              title="根因分析与修复"
+              description="定位根本原因，实施永久性修复方案"
+              color="bg-blue-600"
+            />
+            <ProcessStep
+              step={5}
+              title="复盘与改进"
+              description="总结教训，更新文档，优化流程，预防再次发生"
+              color="bg-green-600"
+            />
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">故障定级标准</h3>
+          <CodeBlock
+            language="bash"
+            code={`【P0 级：核心业务完全不可用】
+
+定义：
+- 核心业务完全中断
+- 影响所有用户
+- 造成直接经济损失
+
+示例：
+- 所有用户无法下单
+- 支付服务完全不可用
+- 数据库不可访问
+
+响应要求：
+- 响应时间：< 5 分钟
+- 恢复时间：< 30 分钟
+- 响应级别：CTO + 技术总监 + 业务负责人
+
+处理优先级：
+1. 立即上报 CTO
+2. 拉起紧急响应群
+3. 每隔 5 分钟同步进展
+4. 优先恢复，后查原因
+5. 必要时回滚上一版本
+
+---
+
+【P1 级：核心功能部分不可用】
+
+定义：
+- 核心功能受影响，但可用降级方案
+- 影响大部分用户（>50%）
+- 造成用户体验严重受损
+
+示例：
+- 订单创建慢（响应 > 5秒）
+- 搜索功能不可用
+- 部分用户无法登录
+
+响应要求：
+- 响应时间：< 15 分钟
+- 恢复时间：< 2 小时
+- 响应级别：技术总监 + 团队 Leader
+
+处理优先级：
+1. 上报技术总监
+2. 评估影响范围
+3. 确定恢复方案
+4. 每隔 15 分钟同步进展
+
+---
+
+【P2 级：非核心功能不可用】
+
+定义：
+- 非核心功能异常
+- 影响少量用户（<20%）
+- 不影响核心业务流程
+
+示例：
+- 统计报表生成失败
+- 图片上传偶尔失败
+- 非关键接口超时
+
+响应要求：
+- 响应时间：< 30 分钟
+- 恢复时间：< 1 天
+- 响应级别：团队 Leader
+
+处理优先级：
+1. 工作时间正常处理
+2. 记录问题工单
+3. 下个工作日解决
+
+---
+
+【P3 级：轻微问题】
+
+定义：
+- 边缘功能问题
+- 不影响用户使用
+- 用户体验轻微影响
+
+示例：
+- 文案错误
+- 样式显示问题
+- 日志报错但不影响功能
+
+响应要求：
+- 响应时间：< 2 小时
+- 恢复时间：< 1 周
+- 响应级别：值班工程师
+
+处理优先级：
+1. 记录问题池
+2. 适当时机修复`}
+          />
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">应急响应工具箱</h3>
+          <CodeBlock
+            language="bash"
+            code={`【快速诊断命令】
+
+# 1. 检查服务健康状态
+curl http://order-service:8080/actuator/health
+curl http://payment-service:8080/actuator/health
+
+# 2. 查看服务日志（实时）
+kubectl logs -f deployment/order-service -n production
+kubectl logs -f deployment/payment-service --since=5m
+
+# 3. 查看错误日志
+kubectl logs deployment/order-service | grep -i "error"
+kubectl logs deployment/order-service | grep -i "exception"
+
+# 4. 检查 Pod 状态
+kubectl get pods -n production
+kubectl describe pod order-service-xxx -n production
+
+# 5. 查看资源使用
+kubectl top pods -n production
+kubectl top nodes
+
+# 6. 查看事件
+kubectl get events -n production --sort-by='.lastTimestamp'
+
+# 7. 查看数据库连接
+SHOW PROCESSLIST;
+SHOW STATUS LIKE 'Threads_connected';
+SHOW STATUS LIKE 'Max_used_connections';
+
+# 8. 查看慢查询
+SHOW FULL PROCESSLIST;
+SELECT * FROM mysql.slow_log ORDER BY start_time DESC LIMIT 10;
+
+# 9. JVM 诊断
+jps -l                          # 找到 Java 进程
+jstack -l <pid>                 # 查看线程堆栈
+jmap -heap <pid>                # 查看堆内存
+jstat -gcutil <pid> 1000 10     # 监控 GC
+
+# 10. 网络诊断
+ping order-service
+telnet order-service 8080
+curl -v http://order-service:8080/actuator/health
+
+---
+
+【快速恢复操作】
+
+# 1. 重启服务
+kubectl rollout restart deployment/order-service -n production
+
+# 2. 回滚到上一版本
+kubectl rollout undo deployment/order-service -n production
+
+# 3. 回滚到指定版本
+kubectl rollout history deployment/order-service -n production
+kubectl rollout undo deployment/order-service --to-revision=3 -n production
+
+# 4. 扩容（增加副本数）
+kubectl scale deployment/order-service --replicas=10 -n production
+
+# 5. 临时下线故障服务
+kubectl scale deployment/payment-service --replicas=0 -n production
+
+# 6. 修改配置（热更新）
+kubectl edit configmap app-config -n production
+# 触发 Pod 重启生效
+kubectl rollout restart deployment/order-service -n production
+
+# 7. 数据库重启（谨慎）
+systemctl restart mysql
+# 或
+kubectl rollout restart statefulset/mysql -n production
+
+# 8. 清理缓存
+redis-cli FLUSHALL
+# 或
+redis-cli FLUSHDB
+
+# 9. 强制杀死 Pod
+kubectl delete pod order-service-xxx -n production --force --grace-period=0
+
+# 10. 查看最近变更
+kubectl rollout history deployment/order-service -n production
+git log --oneline -10`}
+          />
+        </div>
+
+        <div className="bg-white border-2 border-slate-200 rounded-lg p-6 mb-6">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">故障复盘报告模板</h3>
+          <CodeBlock
+            language="bash"
+            code={`【故障复盘报告】
+
+基本信息
+--------
+故障时间：2024-01-15 10:23:15 - 10:35:40（持续 12.5 分钟）
+故障级别：P0（核心业务不可用）
+影响范围：所有用户无法创建订单
+影响用户：约 15,000 人
+损失估算：约 500 笔订单流失
+
+故障时间线
+----------
+10:23:15  监控告警：订单服务错误率 > 5%
+10:23:30  值班工程师确认故障
+10:24:00  定位：支付服务不可用导致订单创建失败
+10:24:30  尝试重启支付服务 Pod，失败
+10:25:00  发现数据库连接池耗尽
+10:26:00  执行临时方案：回滚支付服务到上一版本
+10:27:00  服务恢复，错误率下降到 0.1%
+10:35:40  彻底恢复，错误率 0%
+
+根因分析
+----------
+直接原因：
+支付服务新版本存在 SQL 慢查询，导致连接池耗尽
+
+SQL 问题：
+SELECT * FROM payments WHERE user_id IN (?, ?, ..., ?)
+-- IN 查询包含 5000 个 user_id
+
+根本原因：
+1. 代码变更缺少性能测试
+2. PR Review 未发现性能问题
+3. 缺少数据库慢查询监控告警
+
+处理过程
+----------
+✅ 做得好的地方：
+- 5 分钟内确认故障并上报
+- 快速定位到支付服务问题
+- 12.5 分钟完成恢复
+
+❌ 需要改进的地方：
+- 初期尝试重启无效，浪费 2 分钟
+- 数据库问题发现较晚（6 分钟后才定位）
+- 缺少自动回滚机制
+
+改进措施
+----------
+技术改进：
+1. 添加数据库慢查询告警（>1 秒）
+2. PR Review 增加 SQL 性能检查
+3. 实现自动化回滚机制（异常时自动回滚）
+4. 支付服务分批发布（金丝雀发布）
+
+流程改进：
+1. 建立性能测试 Checklist
+2. 变更前必须压测验证
+3. 完善 On-call 值班手册
+4. 定期故障演练（每周）
+
+经验教训
+---------
+1. 大批次查询必须分页
+2. 变更必须经过性能测试
+3. 监控告警必须覆盖关键路径
+4. 自动化回滚比手动操作更可靠
+
+复盘会议
+---------
+时间：2024-01-16 14:00
+参与：CTO、技术总监、后端团队、DBA、运维团队
+议程：
+1. 回顾故障时间线（10 分钟）
+2. 根因分析（20 分钟）
+3. 讨论改进措施（20 分钟）
+4. 分配任务和责任人（10 分钟）
+5. 总结发言（5 分钟）
+
+行动项
+------
+□ 添加慢查询告警（DBA 负责，本周完成）
+□ SQL 性能检查工具（后端负责，下周完成）
+□ 自动回滚机制（运维负责，下周完成）
+□ 性能测试规范（QA 负责，月底完成）
+□ 故障演练计划（TL 负责，下月启动）
+
+复盘报告编写：张三
+审核：技术总监
+发布：2024-01-17`}
+          />
+        </div>
+      </section>
+
+      {/* FAQ Section */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">常见问题 FAQ</h2>
 
         <div className="space-y-4">
           <FaqCard
             number={1}
-            question="服务启动后无法被调用？"
-            answer={"排查步骤：\n\n1. 检查服务注册状态\n   ```bash\n   # Nacos 控制台查看\n   # 服务列表 -> order-service\n   # 查看实例数量和健康状态\n   ```\n\n2. 验证服务名配置\n   ```yaml\n   spring:\n     application:\n       name: order-service  # 确保名称一致\n   ```\n\n3. 检查负载均衡器\n   ```java\n   @LoadBalanced  // 确保添加该注解\n   @Bean\n   public RestTemplate restTemplate() {\n       return new RestTemplate();\n   }\n   ```\n\n4. 测试直接调用\n   ```bash\n   curl http://order-service:8080/actuator/health\n   ```\n\n【解决方案】\n- 确保服务名一致\n- 添加 @LoadBalanced 注解\n- 检查 Nacos 命名空间配置"}
+            question="如何判断是否需要重启服务？"
+            answer={"重启服务的判断标准：\n\n【需要立即重启的情况】\n1. 服务无响应（假死）\n2. 内存泄漏导致 OOM\n3. 线程死锁\n4. 未知错误且无法快速定位\n\n【重启前准备】\n1. 保存现场信息\n   ```bash\n   # 保存日志\n   kubectl logs deployment/app > app-before-restart.log\n   \n   # 保存 JVM 信息\n   jmap -heap <pid> > heap-info.txt\n   jstack <pid> > thread-dump.txt\n   ```\n\n2. 确认回滚方案\n   ```bash\n   # 查看历史版本\n   kubectl rollout history deployment/app\n   ```\n\n【重启命令】\n```bash\n# 滚动重启（推荐，零停机）\nkubectl rollout restart deployment/app\n\n# 快速扩缩容重启\nkubectl scale deployment/app --replicas=0\nkubectl scale deployment/app --replicas=3\n```\n\n【重启后验证】\n1. 检查 Pod 状态：kubectl get pods\n2. 检查健康：curl /actuator/health\n3. 检查日志：kubectl logs -f\n4. 检查监控：Grafana 面板"}
             isOpen={openFaq === 1}
             onClick={() => toggleFaq(1)}
           />
           <FaqCard
             number={2}
-            question="配置更新后不生效？"
-            answer={"配置热更新排查：\n\n1. 检查 @RefreshScope\n   ```java\n   @RefreshScope  // 必须添加\n   @RestController\n   public class ConfigController {\n       @Value(\"$\{app.config}\")\n       private String config;\n   }\n   ```\n\n2. 验证 Nacos 配置\n   - 检查 DataId 是否正确\n   - 确认配置已发布\n   - 查看配置历史版本\n\n3. 查看刷新日志\n   ```bash\n   grep \"Refresh\" /var/log/app.log\n   ```\n\n4. 手动触发刷新\n   ```bash\n   curl -X POST http://order-service/actuator/refresh\n   ```\n\n【注意事项】\n- @Value 配置支持动态更新\n- @ConfigurationProperties 需要配合 @RefreshScope\n- 某些配置需要重启才能生效"}
+            question="故障处理时如何快速定位问题？"
+            answer={"快速定位问题的五步法：\n\n【步骤1：确认故障范围】\n- 单个服务 vs 整个系统\n- 核心功能 vs 边缘功能\n- 所有用户 vs 部分用户\n\n```bash\n# 检查所有服务状态\nkubectl get pods -A\n# 检查所有服务健康\ncurl $(minikube ip):8080/actuator/health\n```\n\n【步骤2：查看监控指标】\n- CPU、内存、磁盘使用率\n- 请求 QPS、错误率、响应时间\n- 数据库连接数、慢查询\n\n【步骤3：分析日志】\n```bash\n# 实时日志\nkubectl logs -f deployment/app --since=5m\n\n# 错误日志\nkubectl logs deployment/app | grep -i error\n\n# 特定异常\nkubectl logs deployment/app | grep -i \"NullPointerException\"\n```\n\n【步骤4：链路追踪】\n- SkyWalking / Zipkin 查看调用链\n- 找出耗时最长的服务\n- 定位异常传播路径\n\n【步骤5：资源诊断】\n```bash\n# JVM 信息\njmap -heap <pid>\njstat -gcutil <pid> 1000\n\n# 网络连接\nnetstat -tlnp | grep 8080\n\n# 磁盘 I/O\niostat -x 1\n```"}
             isOpen={openFaq === 2}
             onClick={() => toggleFaq(2)}
           />
           <FaqCard
             number={3}
-            question="服务间调用报 500 错误？"
-            answer={"500 错误排查：\n\n1. 查看下游服务日志\n   ```bash\n   # Kibana 查询\n   app: \"order-service\" AND status: 500\n   ```\n\n2. 分析错误堆栈\n   ```java\n   // 常见原因\n   - NullPointerException\n   - SQLException\n   - TimeoutException\n   ```\n\n3. 检查参数传递\n   ```bash\n   # 查看请求日志\n   logger.info(\"Request: {}\", request);\n   ```\n\n4. 查看链路追踪\n   ```bash\n   # SkyWalking / Zipkin\n   # 查看调用链路和耗时\n   ```\n\n【解决方案】\n- 添加参数校验 @Valid\n- 实现全局异常处理\n- 添加详细日志\n- 使用链路追踪定位问题"}
+            question="如何避免生产环境故障？"
+            answer={"故障预防的十个最佳实践：\n\n【1. 完善的监控告警】\n- CPU、内存、磁盘告警（>80%）\n- 接口错误率告警（>1%）\n- 响应时间告警（>1秒）\n- 数据库慢查询告警\n\n【2. 多环境测试】\n- 开发环境 → 测试环境 → 预发布 → 生产\n- 每个环境数据量与生产一致\n- 性能测试必须通过\n\n【3. 代码审查机制】\n- 所有代码必须经过 Review\n- 使用 PR Checklist\n- 关注 SQL 性能、并发安全\n\n【4. 灰度发布】\n- 金丝雀发布：先 1% 流量\n- 观察监控指标\n- 逐步放量：1% → 10% → 50% → 100%\n\n【5. 自动回滚】\n- 异常时自动回滚到上一版本\n- 设置健康检查阈值\n- 失败立即停止发布\n\n【6. 熔断降级】\n- @SentinelResource 配置降级\n- 核心功能与非核心功能隔离\n- 依赖服务故障时降级\n\n【7. 限流保护】\n- 接口级别限流\n- 用户维度限流\n- 防止雪崩效应\n\n【8. 定期备份】\n- 数据库每日备份\n- 配置文件版本管理\n- 关键数据异地备份\n\n【9. 故障演练】\n- 使用 Chaos Mesh 注入故障\n- 验证容错机制\n- 每周定期演练\n\n【10. 知识沉淀】\n- 每次故障必须复盘\n- 更新故障知识库\n- 编写 On-call 手册"}
             isOpen={openFaq === 3}
             onClick={() => toggleFaq(3)}
           />
         </div>
       </section>
 
-      <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">排查流程总结</h2>
-
-        <div className="bg-gradient-to-r from-red-50 to-yellow-50 border-2 border-red-200 rounded-lg p-6">
-          <div className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold flex-shrink-0">1</div>
-              <div>
-                <h4 className="font-bold text-gray-900">确认故障范围</h4>
-                <p className="text-sm text-gray-700">单个服务 vs 整个系统 | 核心功能 vs 边缘功能</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold flex-shrink-0">2</div>
-              <div>
-                <h4 className="font-bold text-gray-900">收集关键信息</h4>
-                <p className="text-sm text-gray-700">日志、监控指标、错误码、TraceId、时间范围</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold flex-shrink-0">3</div>
-              <div>
-                <h4 className="font-bold text-gray-900">定位故障点</h4>
-                <p className="text-sm text-gray-700">链路追踪、依赖分析、资源监控</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold flex-shrink-0">4</div>
-              <div>
-                <h4 className="font-bold text-gray-900">制定解决方案</h4>
-                <p className="text-sm text-gray-700">临时恢复 + 根本修复</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold flex-shrink-0">5</div>
-              <div>
-                <h4 className="font-bold text-gray-900">验证与复盘</h4>
-                <p className="text-sm text-gray-700">功能验证 + 性能验证 + 复盘总结</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      {/* Next Steps */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">下一步学习</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <a href="/monitoring" className="block bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-lg p-6 hover:shadow-lg transition">
             <h3 className="text-xl font-bold text-purple-900 mb-2">📊 监控告警</h3>
-            <p className="text-gray-700 text-sm">Prometheus + Grafana 全链路监控</p>
+            <p className="text-gray-700 text-sm">Prometheus + Grafana 全链路监控体系</p>
           </a>
           <a href="/logging" className="block bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-lg p-6 hover:shadow-lg transition">
             <h3 className="text-xl font-bold text-green-900 mb-2">📝 日志聚合</h3>
-            <p className="text-gray-700 text-sm">ELK Stack 日志收集与分析</p>
+            <p className="text-gray-700 text-sm">ELK Stack 日志收集、存储、分析</p>
+          </a>
+          <a href="/skywalking" className="block bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-lg p-6 hover:shadow-lg transition">
+            <h3 className="text-xl font-bold text-blue-900 mb-2">🔍 链路追踪</h3>
+            <p className="text-gray-700 text-sm">SkyWalking 分布式追踪实战</p>
           </a>
         </div>
       </section>
