@@ -16,16 +16,18 @@
 
 html {
   scroll-behavior: smooth;
+  font-size: 16px;
 }
 
 body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  line-height: 1.6;
+  line-height: 1.75;
   color: var(--color-gray-700);
   background-color: var(--color-gray-50);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
 }
 
 .dark body,
@@ -57,7 +59,8 @@ a:hover {
 h1, h2, h3, h4, h5, h6 {
   color: var(--color-gray-900);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
 }
 
 .dark h1,
@@ -69,9 +72,27 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-gray-100);
 }
 
+h1 { margin-bottom: 1.5rem; }
+h2 { margin-bottom: 1.25rem; }
+h3 { margin-bottom: 1rem; }
+h4 { margin-bottom: 0.875rem; }
+
+/* 段落 */
+p {
+  margin-bottom: 1.25rem;
+  line-height: 1.75;
+}
+
 /* 列表 */
 ul, ol {
   list-style-position: inside;
+  margin-bottom: 1.25rem;
+  padding-left: 0.5rem;
+}
+
+li {
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
 }
 
 /* 代码 */
@@ -81,9 +102,9 @@ code, pre {
 
 code {
   background-color: var(--color-gray-100);
-  padding: 0.125rem 0.375rem;
+  padding: 0.2em 0.4em;
   border-radius: var(--radius-sm);
-  font-size: 0.875em;
+  font-size: 0.9em;
 }
 
 .dark code {
@@ -93,24 +114,30 @@ code {
 pre {
   background-color: var(--color-gray-900);
   color: var(--color-gray-100);
-  padding: var(--spacing-4);
+  padding: var(--spacing-5);
   border-radius: var(--radius-lg);
   overflow-x: auto;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
 }
 
 pre code {
   background: none;
   padding: 0;
   color: inherit;
+  font-size: 0.875rem;
 }
 
 /* 引用 */
 blockquote {
   border-left: 4px solid var(--color-primary-600);
-  padding-left: var(--spacing-4);
-  margin: var(--spacing-4) 0;
+  padding-left: var(--spacing-5);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  margin: 1.5rem 0;
   color: var(--color-gray-600);
   font-style: italic;
+  line-height: 1.7;
 }
 
 .dark blockquote {
@@ -122,7 +149,7 @@ blockquote {
 hr {
   border: none;
   border-top: 1px solid var(--color-gray-200);
-  margin: var(--spacing-6) 0;
+  margin: 2rem 0;
 }
 
 .dark hr {
@@ -133,18 +160,22 @@ hr {
 img {
   max-width: 100%;
   height: auto;
+  display: block;
+  margin: 1.5rem 0;
 }
 
 /* 表格 */
 table {
   width: 100%;
   border-collapse: collapse;
+  margin-bottom: 1.5rem;
 }
 
 th, td {
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: 0.875rem 1rem;
   text-align: left;
   border-bottom: 1px solid var(--color-gray-200);
+  line-height: 1.5;
 }
 
 .dark th,
@@ -203,4 +234,25 @@ th {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: var(--color-gray-500);
+}
+
+/* 文本选择 */
+::selection {
+  background-color: rgba(79, 70, 229, 0.2);
+  color: var(--color-primary-700);
+}
+
+.dark ::selection {
+  background-color: rgba(99, 102, 241, 0.3);
+  color: #c7d2fe;
+}
+
+/* 焦点样式 */
+:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.dark :focus-visible {
+  outline-color: #818cf8;
 }
