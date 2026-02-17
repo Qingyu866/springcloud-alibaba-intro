@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { CodeBlock } from '../components';
 
 export const GatewayPage: React.FC = () => {
@@ -124,119 +124,207 @@ spring:
 
       {/* 路由断言详解 */}
       <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">路由断言详解</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">路由断言配置示例</h2>
         <p className="text-lg text-gray-700 mb-6">
-          断言(Predicate)用于匹配请求,决定是否将请求转发到目标服务。
+          使用YAML配置方式定义路由断言,更清晰、更易维护。
         </p>
         <CodeBlock
-          language="java"
-          code={`import org.springframework.cloud.gateway.route.RouteLocatorBuilder;
-import { useState } from 'react';
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
+          language="yaml"
+          code={`spring:
+  cloud:
+    gateway:
+      routes:
+        # Path断言
+        - id: path-route
+          uri: lb://path-service
+          predicates:
+            - Path=/api/path/**
 
-@Configuration
-public class GatewayConfig {
+        # Method断言
+        - id: method-route
+          uri: lb://method-service
+          predicates:
+            - Method=GET
 
-    @Bean
-    public RouteLocatorBuilder customRouteLocator(RouteLocatorBuilder builder) {
-        return builder.routes()
-            // 路径匹配示例
-            .route("path-route")
-                .uri("lb://path-service")
-                .predicate(path("/api/path/**"))
-                .and()
-            )
+        # Header断言
+        - id: header-route
+          uri: lb://header-service
+          predicates:
+            - Header=X-Request-Id, \\d+
 
-            // 方法匹配示例
-            .route("method-route")
-                .uri("lb://method-service")
-                .predicate(method("GET"))
-                .and()
+        # Query断言
+        - id: query-route
+          uri: lb://query-service
+          predicates:
+            - Query=color
 
-            // Header 匹配示例
-            .route("header-route")
-                .uri("lb://header-service")
-                .predicate(header("X-Request-Id", "\\d+"))
-                .and()
+        # 组合断言
+        - id: composite-route
+          uri: lb://composite-service
+          predicates:
+            - Path=/api/composite/**
+            - Method=GET
+            - Header=X-Request-Id, \\d+
 
-            // Query 匹配示例
-            .route("query-route")
-                .uri("lb://query-service")
-                .predicate(query("color"))
-                .and()
+        # Cookie断言
+        - id: cookie-route
+          uri: lb://cookie-service
+          predicates:
+            - Cookie=sessionid, .*
 
-            // 组合断言 (AND)
-            .route("composite-route")
-                .uri("lb://composite-service")
-                .predicate(path("/api/composite/**"))
-                .and()
-                .predicate(method("GET"))
-                .and()
-                .predicate(header("X-Request-Id", "\\d+"))
-                .and()
-
-            // OR 断言
-            .route("or-route")
-                .uri("lb://or-service")
-                .predicate(path("/api/or/**").and())
-                .or()
-                .predicate(path("/api/alt/**").and(method("GET"))
-                .and()
-
-            // Before/After 时间断言
-            .route("time-route")
-                .uri("lb://time-service")
-                .predicate(and(
-                    after("2023-01-01T00:00:00+08:00[Asia/Shanghai]"),
-                    before("2023-12-31T23:59:59+08:00[Asia/Shanghai]")
-                ))
-                .and()
-
-            // Cookie 断言
-            .route("cookie-route")
-                .uri("lb://cookie-service")
-                .predicate(cookie("sessionid", ".*"))
-                .and()
-
-            // RemoteAddr 断言
-            .route("ip-route")
-                .uri("lb://ip-service")
-                .predicate(remouteAddr("192.168.1.100/24"))
-                .and()
-
-            .build();
-    }
-}`}
+        # RemoteAddr断言
+        - id: ip-route
+          uri: lb://ip-service
+          predicates:
+            - RemoteAddr=192.168.1.100/24`}
           />
       </section>
 
-      {/* 过滤器详解 */}
+      {/* 常用断言详解 */}
       <section className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">过滤器详解</h2>
-        <p className="text-lg text-gray-700 mb-6">
-          过滤器用于在请求转发前后对请求和响应进行处理。
-        </p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">常用断言详解</h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse border border-gray-300">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border border-gray-300 px-4 py-2 text-left">断言</th>
+                <th className="border border-gray-300 px-4 py-2 text-left">说明</th>
+                <th className="border border-gray-300 px-4 py-2 text-left">示例</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Path</td>
+                <td className="border border-gray-300 px-4 py-2">路径匹配</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Path=/api/user/**</td>
+              </tr>
+              <tr className="bg-gray-50">
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Method</td>
+                <td className="border border-gray-300 px-4 py-2">HTTP方法</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Method=GET,POST</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Header</td>
+                <td className="border border-gray-300 px-4 py-2">请求头匹配</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Header=X-Request-Id, \\d+</td>
+              </tr>
+              <tr className="bg-gray-50">
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Query</td>
+                <td className="border border-gray-300 px-4 py-2">查询参数</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Query=color</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Cookie</td>
+                <td className="border border-gray-300 px-4 py-2">Cookie匹配</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Cookie=sessionid, .*</td>
+              </tr>
+              <tr className="bg-gray-50">
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">RemoteAddr</td>
+                <td className="border border-gray-300 px-4 py-2">IP地址</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- RemoteAddr=192.168.1.0/24</td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Host</td>
+                <td className="border border-gray-300 px-4 py-2">主机名</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Host=**.somehost.org</td>
+              </tr>
+              <tr className="bg-gray-50">
+                <td className="border border-gray-300 px-4 py-2 font-mono text-sm">Time</td>
+                <td className="border border-gray-300 px-4 py-2">时间范围</td>
+                <td className="border border-gray-300 px-4 py-2 font-mono text-xs">- Between=2023-01-01T00:00:00+08:00[Asia/Shanghai],2023-12-31T23:59:59+08:00[Asia/Shanghai]</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
+      {/* 内置过滤器详解 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">内置过滤器详解</h2>
+        <CodeBlock
+          language="yaml"
+          code={`spring:
+  cloud:
+    gateway:
+      routes:
+        - id: filter-example
+          uri: lb://example-service
+          predicates:
+            - Path=/api/example/**
+          filters:
+            # 去除前缀
+            - StripPrefix=2
+
+            # 路径重写
+            - RewritePath=/api/(?<segment>.*), /$\\{segment}
+
+            # 添加请求头
+            - AddRequestHeader=X-Request-Id, \${uuid}
+            - AddRequestHeader=X-Gateway, Spring-Cloud-Gateway
+
+            # 移除请求头
+            - RemoveRequestHeader=X-Custom-Header
+
+            # 添加响应头
+            - AddResponseHeader=X-Response-Id, \${uuid}`}
+          />
+      </section>
+
+      {/* 自定义过滤器 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">自定义过滤器实战</h2>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">认证过滤器</h3>
         <CodeBlock
           language="java"
-          code={`// 全局过滤器示例: 添加请求头
-@Component
-public class AddRequestHeaderFilter implements GlobalFilter, Ordered {
+          code={`@Component
+public class AuthFilter implements GlobalFilter, Ordered {
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String token = exchange.getRequest().getHeaders().getFirst("Authorization");
+
+        // 验证JWT Token
+        if (token == null || !JwtUtil.validate(token)) {
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        }
+
+        // 添加用户信息到请求头
+        return chain.filter(exchange.mutate()
+            .request(r -> r.header("X-User-Id", JwtUtil.getUserId(token)))
+            .build());
+    }
+
+    @Override
+    public int getOrder() {
+        return -100; // 优先级最高
+    }
+}`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">日志过滤器</h3>
+        <CodeBlock
+          language="java"
+          code={`@Component
+public class LoggingFilter implements GlobalFilter, Ordered {
+    private static final Logger log = LoggerFactory.getLogger(LoggingFilter.class);
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        return chain.filter(exchange.mutate()
-            .request(r -> r.mutate()
-                .headers(headers -> headers.put("X-Request-Id", UUID.randomUUID()))
-                .header("X-Gateway", "Spring Cloud Gateway")
-                .header("X-Timestamp", String.valueOf(System.currentTimeMillis()))
-            ).build()
-        ).then();
+        ServerHttpRequest request = exchange.getRequest();
+        long startTime = System.currentTimeMillis();
+
+        return chain.filter(exchange).then(Mono.fromRunnable(() -> {
+            ServerHttpResponse response = exchange.getResponse();
+            long duration = System.currentTimeMillis() - startTime;
+
+            log.info("Request: {} {} - Status: {} - Duration: {}ms",
+                request.getMethod(),
+                request.getURI().getPath(),
+                response.getStatusCode(),
+                duration
+            );
+        }));
     }
 
     @Override
@@ -244,42 +332,60 @@ public class AddRequestHeaderFilter implements GlobalFilter, Ordered {
         return 0;
     }
 }`}
-          />
+        />
+      </section>
 
-        <div className="mt-6">
-          <h4>路径过滤器示例: 去除前缀</h4>
-          <CodeBlock
-            language="java"
-            code={`@Component
-public class StripPrefixFilter implements GatewayFilterFactory {
+      {/* 跨域配置 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">跨域配置</h2>
+        <CodeBlock
+          language="java"
+          code={`@Configuration
+public class CorsConfig {
+    @Bean
+    public CorsWebFilter corsFilter() {
+        CorsConfiguration config = new CorsConfiguration();
 
-    @Override
-    public GatewayFilter apply(Config config) {
-        return (exchange, chain) -> {
-            ServerHttpRequest request = exchange.getRequest();
-            String path = request.getURI().getRawPath();
-            String newPath = path.replaceAll("^/api", "");
+        config.addAllowedOrigin("*");
+        config.addAllowedMethod("*");
+        config.addAllowedHeader("*");
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
 
-            ServerHttpRequest newRequest = request.mutate()
-                .path(newPath)
-                .build();
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
 
-            return chain.filter(exchange.mutate().request(newRequest).build());
-        };
-    }
-
-    @Override
-    public Class<Config> getConfigClass() {
-        return Config.class;
-    }
-
-    public static class Config {
-        // 配置参数
+        return new CorsWebFilter(source);
     }
 }`}
-            />
-          </div>
-        </section>
+        />
+      </section>
+
+      {/* 动态路由 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">动态路由配置</h2>
+        <p className="text-lg text-gray-700 mb-6">
+          Gateway支持从Nacos配置中心动态读取路由配置,实现无需重启服务的路由更新。
+        </p>
+        <CodeBlock
+          language="yaml"
+          code={`spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      routes:
+        # 动态路由配置
+        - id: dynamic-route
+          uri: lb://dynamic-service
+          predicates:
+            - Path=/api/dynamic/**
+          metadata:
+            # 从Nacos配置中心读取
+            config-version: 1.0.0`}
+        />
+      </section>
 
       {/* 集成 Sentinel */}
       <section className="mb-12">
@@ -314,7 +420,7 @@ public class StripPrefixFilter implements GatewayFilterFactory {
               <span>在网关层拦截,保护后端服务</span>
             </li>
             <li className="flex items-start">
-              <span className="text GUI/Game mr-2">✓</span>
+              <span className="text-green-600 mr-2">✓</span>
               <span>针对不同API设置不同限流阈值</span>
             </li>
             <li className="flex items-start">
@@ -323,6 +429,86 @@ public class StripPrefixFilter implements GatewayFilterFactory {
             </li>
           </ul>
         </div>
+      </section>
+
+      {/* 高可用部署 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">网关高可用部署</h2>
+        <p className="text-lg text-gray-700 mb-6">
+          使用Kubernetes部署多个Gateway实例,实现高可用和负载均衡。
+        </p>
+        <CodeBlock
+          language="yaml"
+          code={`# Gateway多实例部署
+spec:
+  replicas: 3  # 3个实例
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    spec:
+      containers:
+      - name: gateway
+        image: gateway:latest
+        ports:
+        - containerPort: 9090
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: production
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 5`}
+        />
+      </section>
+
+      {/* 性能优化 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">性能优化配置</h2>
+        <CodeBlock
+          language="yaml"
+          code={`spring:
+  cloud:
+    gateway:
+      httpclient:
+        # 连接池配置
+        connect-timeout: 1000
+        response-timeout: 30s
+        pool:
+          type: fixed
+          max-connections: 500
+          acquire-timeout: 10000
+
+      # 全局CORS配置
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600`}
+        />
       </section>
 
       {/* 最佳实践 */}
@@ -345,6 +531,12 @@ public class StripPrefixFilter implements GatewayFilterFactory {
           <FaqCard2 number={3} question="如何跨域访问?" answer="配置 CorsWebFilter 或 Gateway CORS" isOpen={expandedFaq === 3} onClick={() => setExpandedFaq(expandedFaq === 3 ? null : 3)} />
           <FaqCard2 number={4} question="支持 WebSocket?" answer="原生支持 WebSocket 协议转发" isOpen={expandedFaq === 4} onClick={() => setExpandedFaq(expandedFaq === 4 ? null : 4)} />
           <FaqCard2 number={5} question="如何实现灰度发布?" answer="Header 断言 + 权重路由" isOpen={expandedFaq === 5} onClick={() => setExpandedFaq(expandedFaq === 5 ? null : 5)} />
+          <FaqCard2 number={6} question="Gateway vs Nginx?" answer="Gateway: 微服务网关,动态路由、集成服务发现; Nginx: 反向代理,高性能、负载均衡" isOpen={expandedFaq === 6} onClick={() => setExpandedFaq(expandedFaq === 6 ? null : 6)} />
+          <FaqCard2 number={7} question="如何实现API聚合?" answer="使用聚合过滤器或自定义过滤器聚合多个服务响应" isOpen={expandedFaq === 7} onClick={() => setExpandedFaq(expandedFaq === 7 ? null : 7)} />
+          <FaqCard2 number={8} question="如何实现服务降级?" answer="集成Hystrix或Sentinel实现熔断降级" isOpen={expandedFaq === 8} onClick={() => setExpandedFaq(expandedFaq === 8 ? null : 8)} />
+          <FaqCard2 number={9} question="如何调试路由规则?" answer="启用Gateway日志: logging.level.org.springframework.cloud.gateway=DEBUG" isOpen={expandedFaq === 9} onClick={() => setExpandedFaq(expandedFaq === 9 ? null : 9)} />
+          <FaqCard2 number={10} question="如何限制请求大小?" answer="配置spring.servlet.multipart.maxFileSize: 10MB" isOpen={expandedFaq === 10} onClick={() => setExpandedFaq(expandedFaq === 10 ? null : 10)} />
+          <FaqCard2 number={11} question="如何实现WebSocket支持?" answer="Gateway原生支持WebSocket,只需配置路由即可: - Path=/ws/**" isOpen={expandedFaq === 11} onClick={() => setExpandedFaq(expandedFaq === 11 ? null : 11)} />
         </div>
       </section>
 
@@ -428,7 +620,7 @@ const ConceptCard3: React.FC<ConceptCard3Props> = ({ title, level, desc, example
       <p className="text-gray-700 mb-3">{desc}</p>
       <div className="text-sm">
         <span className="font-semibold text-gray-600">示例: </span>
-        <code className="text-primary-600">{example}</code>
+        <code className="text-primary">{example}</code>
       </div>
     </div>
   );

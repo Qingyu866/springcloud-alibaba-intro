@@ -1,0 +1,84 @@
+# Seata 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seata-config
+  namespace: springcloud-alibaba
+  labels:
+    app: seata
+data:
+  file.conf: |
+    service {
+      vgroupMapping.default_tx_group = "default"
+      default.grouplist = "seata-service:8091"
+      enableDegrade = false
+      disable = false
+      max.commitRetryTimeout = "-1"
+      max.rollbackRetryTimeout = "-1"
+    }
+
+    store {
+      mode = "db"
+      db {
+        datasource = "druid"
+        dbType = "mysql"
+        driverClassName = "com.mysql.jdbc.Driver"
+        url = "jdbc:mysql://mysql-service:3306/seata?rewriteBatchedStatements=true"
+        user = "seata"
+        password = "seata@2024"
+        minConn = 5
+        maxConn = 30
+        globalTable = "global_table"
+        branchTable = "branch_table"
+        lockTable = "lock_table"
+        queryLimit = 100
+        maxWait = 5000
+      }
+    }
+
+    client {
+      rm {
+        reportSuccessCount = true
+        tableMetaCheckInterval = 60000
+        reportRetryCount = 5
+        asyncCommitBufferLimit = 10000
+        lock {
+          retryInterval = 10
+          retryTimes = 30
+          retryPolicyBranchRollbackOnConflict = true
+        }
+      }
+      tm {
+        commitRetryCount = 5
+        rollbackRetryCount = 5
+      }
+      undo {
+        logSerialization = "jackson"
+        logTable = "undo_log"
+      }
+    }
+
+  registry.conf: |
+    registry {
+      type = "nacos"
+      nacos {
+        application = "seata-server"
+        serverAddr = "nacos-service:8848"
+        group = "SEATA_GROUP"
+        namespace = ""
+        cluster = "default"
+        username = "nacos"
+        password = "nacos@2024"
+      }
+    }
+
+    config {
+      type = "nacos"
+      nacos {
+        serverAddr = "nacos-service:8848"
+        namespace = ""
+        group = "SEATA_GROUP"
+        username = "nacos"
+        password = "nacos@2024"
+      }
+    }

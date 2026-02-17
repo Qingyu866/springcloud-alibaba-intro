@@ -387,12 +387,12 @@ public class OrderConsumer {
       {/* Header */}
       <div className="bg-gradient-to-r from-indigo-700 to-indigo-900 text-white rounded-lg p-6 mb-8">
         <h1 className="text-4xl font-bold mb-2">Spring Cloud Alibaba 面试题集</h1>
-        <p className="text-indigo-100">高频面试问题精讲，助你成功拿下 offer</p>
+        <p className="text-indigo-100">精选面试问题精讲，助你成功拿下 offer</p>
         <div className="flex gap-3 text-sm mt-4">
           <span className="px-3 py-1 bg-white/20 rounded-full">📚 面试准备</span>
           <span className="px-3 py-1 bg-white/20 rounded-full">⏱️ 约60分钟</span>
           <span className="px-3 py-1 bg-white/20 rounded-full">📋 6大分类</span>
-          <span className="px-3 py-1 bg-white/20 rounded-full">🎯 25道精选题</span>
+          <span className="px-3 py-1 bg-white/20 rounded-full">🎯 精选核心题</span>
         </div>
       </div>
 

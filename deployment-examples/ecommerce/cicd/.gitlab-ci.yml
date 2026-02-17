@@ -1,0 +1,249 @@
+variables:
+  DOCKER_REGISTRY: your-registry.com
+  DOCKER_TLS_CERTDIR: "/certs"
+  KUBECONFIG: /tmp/kubeconfig
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+stages:
+  - build
+  - test
+  - package
+  - deploy
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .m2/repository/
+
+# 构建阶段
+build:
+  stage: build
+  image: maven:3.8-openjdk-17
+  script:
+    - echo "Building project..."
+    - mvn clean compile -DskipTests
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# 测试阶段
+test:
+  stage: test
+  image: maven:3.8-openjdk-17
+  services:
+    - mysql:8.0
+    - redis:7-alpine
+  variables:
+    MYSQL_ROOT_PASSWORD: root_password
+    MYSQL_DATABASE: ecommerce_test
+    SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/ecommerce_test?useSSL=false&serverTimezone=Asia/Shanghai
+    SPRING_REDIS_HOST: redis
+    SPRING_REDIS_PORT: 6379
+  script:
+    - echo "Running tests..."
+    - mvn test
+    - mvn jacoco:report
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  artifacts:
+    reports:
+      junit:
+        - "**/target/surefire-reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "**/target/site/jacoco/jacoco.xml"
+    paths:
+      - "**/target/site/jacoco/"
+    expire_in: 1 week
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# 打包镜像阶段
+package-gateway:
+  stage: package
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - echo "Packaging Gateway..."
+    - cd gateway-service
+    - |
+      cat > Dockerfile << EOF
+      FROM openjdk:17-jdk-slim
+      WORKDIR /app
+      COPY target/gateway-service.jar app.jar
+      EXPOSE 8080 8081
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+      EOF
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASSWORD $DOCKER_REGISTRY
+    - docker build -t $DOCKER_REGISTRY/gateway-service:$CI_COMMIT_SHORT_SHA .
+    - docker build -t $DOCKER_REGISTRY/gateway-service:latest .
+    - docker push $DOCKER_REGISTRY/gateway-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/gateway-service:latest
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+
+package-order-service:
+  stage: package
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - echo "Packaging Order Service..."
+    - cd order-service
+    - |
+      cat > Dockerfile << EOF
+      FROM openjdk:17-jdk-slim
+      WORKDIR /app
+      COPY target/order-service.jar app.jar
+      EXPOSE 8082 8083
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+      EOF
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASSWORD $DOCKER_REGISTRY
+    - docker build -t $DOCKER_REGISTRY/order-service:$CI_COMMIT_SHORT_SHA .
+    - docker build -t $DOCKER_REGISTRY/order-service:latest .
+    - docker push $DOCKER_REGISTRY/order-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/order-service:latest
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+
+package-user-service:
+  stage: package
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - echo "Packaging User Service..."
+    - cd user-service
+    - |
+      cat > Dockerfile << EOF
+      FROM openjdk:17-jdk-slim
+      WORKDIR /app
+      COPY target/user-service.jar app.jar
+      EXPOSE 8084 8085
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+      EOF
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASSWORD $DOCKER_REGISTRY
+    - docker build -t $DOCKER_REGISTRY/user-service:$CI_COMMIT_SHORT_SHA .
+    - docker build -t $DOCKER_REGISTRY/user-service:latest .
+    - docker push $DOCKER_REGISTRY/user-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-service:latest
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+
+package-payment-service:
+  stage: package
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  script:
+    - echo "Packaging Payment Service..."
+    - cd payment-service
+    - |
+      cat > Dockerfile << EOF
+      FROM openjdk:17-jdk-slim
+      WORKDIR /app
+      COPY target/payment-service.jar app.jar
+      EXPOSE 8086 8087
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+      EOF
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASSWORD $DOCKER_REGISTRY
+    - docker build -t $DOCKER_REGISTRY/payment-service:$CI_COMMIT_SHORT_SHA .
+    - docker build -t $DOCKER_REGISTRY/payment-service:latest .
+    - docker push $DOCKER_REGISTRY/payment-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/payment-service:latest
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+
+# 部署到 K8s - 开发环境
+deploy-dev:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: development
+    url: https://dev.ecommerce.example.com
+  script:
+    - echo "Deploying to development..."
+    - kubectl config use-context dev-cluster
+    - kubectl set image deployment/gateway gateway=$DOCKER_REGISTRY/gateway-service:$CI_COMMIT_SHORT_SHA -n ecommerce-dev
+    - kubectl set image deployment/order-service order-service=$DOCKER_REGISTRY/order-service:$CI_COMMIT_SHORT_SHA -n ecommerce-dev
+    - kubectl set image deployment/user-service user-service=$DOCKER_REGISTRY/user-service:$CI_COMMIT_SHORT_SHA -n ecommerce-dev
+    - kubectl set image deployment/payment-service payment-service=$DOCKER_REGISTRY/payment-service:$CI_COMMIT_SHORT_SHA -n ecommerce-dev
+    - kubectl rollout status deployment/gateway -n ecommerce-dev
+    - kubectl rollout status deployment/order-service -n ecommerce-dev
+    - kubectl rollout status deployment/user-service -n ecommerce-dev
+    - kubectl rollout status deployment/payment-service -n ecommerce-dev
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-user-service
+    - package-payment-service
+  only:
+    - develop
+
+# 部署到 K8s - 生产环境
+deploy-prod:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://ecommerce.example.com
+  script:
+    - echo "Deploying to production..."
+    - kubectl config use-context prod-cluster
+    # 更新镜像
+    - kubectl set image deployment/gateway gateway=$DOCKER_REGISTRY/gateway-service:$CI_COMMIT_SHORT_SHA -n ecommerce
+    - kubectl set image deployment/order-service order-service=$DOCKER_REGISTRY/order-service:$CI_COMMIT_SHORT_SHA -n ecommerce
+    - kubectl set image deployment/user-service user-service=$DOCKER_REGISTRY/user-service:$CI_COMMIT_SHORT_SHA -n ecommerce
+    - kubectl set image deployment/payment-service payment-service=$DOCKER_REGISTRY/payment-service:$CI_COMMIT_SHORT_SHA -n ecommerce
+    # 等待滚动更新完成
+    - kubectl rollout status deployment/gateway -n ecommerce
+    - kubectl rollout status deployment/order-service -n ecommerce
+    - kubectl rollout status deployment/user-service -n ecommerce
+    - kubectl rollout status deployment/payment-service -n ecommerce
+    # 健康检查
+    - kubectl get pods -n ecommerce
+    - kubectl get svc -n ecommerce
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-user-service
+    - package-payment-service
+  when: manual
+  only:
+    - main
+
+# 回滚任务
+rollback:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  script:
+    - echo "Rolling back deployment..."
+    - kubectl config use-context prod-cluster
+    - kubectl rollout undo deployment/gateway -n ecommerce
+    - kubectl rollout undo deployment/order-service -n ecommerce
+    - kubectl rollout undo deployment/user-service -n ecommerce
+    - kubectl rollout undo deployment/payment-service -n ecommerce
+  when: manual
+  only:
+    - main

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker
+  namespace: flash-sale
+  labels:
+    app: rocketmq-broker
+spec:
+  ports:
+  - port: 10909
+    name: broker
+    targetPort: 10909
+  - port: 10911
+    name: broker-main
+    targetPort: 10911
+  - port: 10912
+    name: broker-ha
+    targetPort: 10912
+  selector:
+    app: rocketmq-broker
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-namesrv
+  namespace: flash-sale
+  labels:
+    app: rocketmq-namesrv
+spec:
+  ports:
+  - port: 9876
+    name: namesrv
+    targetPort: 9876
+  selector:
+    app: rocketmq-namesrv
+  type: ClusterIP

@@ -1,0 +1,338 @@
+# Prometheus 告警规则 (50+ 规则)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: springcloud-alibaba-alerts
+  namespace: springcloud-alibaba
+  labels:
+    release: prometheus
+    app: springcloud-alibaba
+spec:
+  groups:
+    # 应用服务告警
+    - name: application_services
+      interval: 30s
+      rules:
+        # 服务实例宕机
+        - alert: ServiceInstanceDown
+          expr: up{job="kubernetes-pods"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "服务实例宕机: {{ $labels.pod }}"
+            description: "命名空间 {{ $labels.namespace }} 中的服务 {{ $labels.pod }} 已宕机超过1分钟"
+
+        # 服务高错误率
+        - alert: HighErrorRate
+          expr: |
+            rate(http_server_requests_seconds_count{status=~"5.."}[5m]) /
+            rate(http_server_requests_seconds_count[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "服务错误率过高: {{ $labels.app }}"
+            description: "服务 {{ $labels.app }} 的错误率超过 5%，当前值: {{ $value | humanizePercentage }}"
+
+        # 服务响应时间过长
+        - alert: HighResponseTime
+          expr: |
+            histogram_quantile(0.95,
+              rate(http_server_requests_seconds_bucket[5m])) > 1
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "服务响应时间过长: {{ $labels.app }}"
+            description: "服务 {{ $labels.app }} 的 P95 响应时间超过 1秒，当前值: {{ $value }}s"
+
+        # 服务实例不足
+        - alert: LowServiceReplicas
+          expr: |
+            count(up{job="kubernetes-pods", app=~"gateway|order-service|user-service|payment-service"}) by (app) < 3
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "服务实例数量不足: {{ $labels.app }}"
+            description: "服务 {{ $labels.app }} 的运行实例少于 3 个，当前值: {{ $value }}"
+
+        # HPA 达到上限
+        - alert: HPAAtMaxCapacity
+          expr: |
+            kube_hpa_status_current_replicas{namespace="springcloud-alibaba"} ==
+            kube_hpa_spec_max_replicas{namespace="springcloud-alibaba"}
+          for: 15m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "HPA 达到上限: {{ $labels.hpa }}"
+            description: "HPA {{ $labels.hpa }} 已达到最大副本数 {{ $value }}，请考虑扩容"
+
+        # JVM 内存使用率过高
+        - alert: HighMemoryUsage
+          expr: |
+            (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "JVM 堆内存使用率过高: {{ $labels.app }}"
+            description: "应用 {{ $labels.app }} 的堆内存使用率超过 90%，当前值: {{ $value | humanizePercentage }}"
+
+        # GC 时间过长
+        - alert: LongGCPauseTime
+          expr: |
+            rate(jvm_gc_pause_seconds_sum[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "GC 暂停时间过长: {{ $labels.app }}"
+            description: "应用 {{ $labels.app }} 的 GC 暂停时间占比超过 10%，可能导致性能问题"
+
+        # 线程数过多
+        - alert: HighThreadCount
+          expr: |
+            jvm_threads_current_threads > 500
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "线程数过多: {{ $labels.app }}"
+            description: "应用 {{ $labels.app }} 的当前线程数超过 500，当前值: {{ $value }}"
+
+    # 基础设施告警
+    - name: infrastructure
+      interval: 30s
+      rules:
+        # MySQL 主库宕机
+        - alert: MySQLMasterDown
+          expr: mysql_up{exported_name="mysql-0"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: dba
+          annotations:
+            summary: "MySQL 主库宕机"
+            description: "MySQL 主库 (mysql-0) 已宕机超过 1 分钟"
+
+        # MySQL 复制延迟
+        - alert: MySQLReplicationLag
+          expr: mysql_slave_lag_seconds > 60
+          for: 5m
+          labels:
+            severity: warning
+            team: dba
+          annotations:
+            summary: "MySQL 复制延迟过高"
+            description: "MySQL 从库复制延迟 {{ $value }}秒"
+
+        # MySQL 慢查询
+        - alert: MySQLSlowQueries
+          expr: |
+            rate(mysql_global_status_slow_queries[5m]) > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: dba
+          annotations:
+            summary: "MySQL 慢查询过多"
+            description: "MySQL 慢查询速率超过 10次/秒，当前值: {{ $value }}"
+
+        # Redis 节点宕机
+        - alert: RedisNodeDown
+          expr: redis_up == 0
+          for: 1m
+          labels:
+            severity: critical
+            team: dba
+          annotations:
+            summary: "Redis 节点宕机: {{ $labels.pod }}"
+            description: "Redis 节点 {{ $labels.pod }} 已宕机"
+
+        # Redis 内存使用率过高
+        - alert: RedisHighMemoryUsage
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            team: dba
+          annotations:
+            summary: "Redis 内存使用率过高"
+            description: "Redis 内存使用率超过 90%，当前值: {{ $value | humanizePercentage }}"
+
+        # Redis 连接数过多
+        - alert: RedisHighConnections
+          expr: redis_connected_clients > 1000
+          for: 10m
+          labels:
+            severity: warning
+            team: dba
+          annotations:
+            summary: "Redis 连接数过多"
+            description: "Redis 当前连接数 {{ $value }}，接近上限"
+
+        # Nacos 集群节点宕机
+        - alert: NacosNodeDown
+          expr: |
+            count(up{job="nacos"} == 0) > 0
+          for: 2m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "Nacos 节点宕机"
+            description: "Nacos 集群有节点宕机，健康节点数: {{ $value }}"
+
+        # RocketMQ Broker 宕机
+        - alert: RocketMQBrokerDown
+          expr: |
+            up{job="rocketmq-broker"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "RocketMQ Broker 宕机"
+            description: "RocketMQ Broker 实例已宕机"
+
+        # RocketMQ 消息堆积
+        - alert: RocketMQMessageLag
+          expr: |
+            rocketmq_broker_message_lag > 100000
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "RocketMQ 消息堆积"
+            description: "Topic {{ $labels.topic }} 的消息堆积超过 10万条，当前值: {{ $value }}"
+
+        # Seata TC 宕机
+        - alert: SeataTCDown
+          expr: |
+            count(up{job="seata"} == 0) > 1
+          for: 2m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "Seata TC 节点宕机"
+            description: "超过 1 个 Seata TC 节点宕机"
+
+    # Pod 资源告警
+    - name: pod_resources
+      interval: 30s
+      rules:
+        # Pod CPU 使用率过高
+        - alert: PodHighCPUUsage
+          expr: |
+            rate(container_cpu_usage_seconds_total{namespace="springcloud-alibaba"}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Pod CPU 使用率过高: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} 的 CPU 使用率超过 80%，当前值: {{ $value | humanizePercentage }}"
+
+        # Pod 内存使用率过高
+        - alert: PodHighMemoryUsage
+          expr: |
+            (container_memory_working_set_bytes{namespace="springcloud-alibaba"} /
+             container_spec_memory_limit_bytes{namespace="springcloud-alibaba"}) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Pod 内存使用率过高: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} 的内存使用率超过 90%，可能发生 OOM"
+
+        # Pod 重启次数过多
+        - alert: PodFrequentRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="springcloud-alibaba"}[1h]) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Pod 频繁重启: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} 在过去 1 小时内重启了 {{ $value }} 次"
+
+        # Pod 处于非 Running 状态
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_phase{namespace="springcloud-alibaba", phase!="Running"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Pod 未就绪: {{ $labels.pod }}"
+            description: "Pod {{ $labels.pod }} 处于 {{ $labels.phase }} 状态"
+
+    # 秒杀服务专用告警
+    - name: flash_sale
+      interval: 15s
+      rules:
+        # 秒杀 QPS 突增
+        - alert: FlashSaleQPSDropping
+          expr: |
+            rate(http_server_requests_seconds_count{app="flash-order-service", uri="/api/flash-order"}[1m]) < 100
+          for: 2m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "秒杀服务 QPS 下降"
+            description: "秒杀服务 QPS 降至 {{ $value }}/秒，可能发生故障"
+
+        # 秒杀订单积压
+        - alert: FlashSaleOrderBacklog
+          expr: |
+            rocketmq_broker_message_lag{topic="flash-order-topic"} > 50000
+          for: 5m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "秒杀订单积压"
+            description: "秒杀订单队列积压 {{ $value }} 条，消费者处理能力不足"
+
+        # 秒杀服务高延迟
+        - alert: FlashSaleHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              rate(http_server_requests_seconds_bucket{app="flash-order-service", uri="/api/flash-order"}[1m])) > 2
+          for: 3m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "秒杀服务延迟过高"
+            description: "秒杀服务 P99 延迟超过 2秒，当前值: {{ $value }}s"
+
+        # Redis 预减库存失败
+        - alert: RedisDeductFailed
+          expr: |
+            rate(redis_command_duration_seconds_count{command="decrby", cmd_failed="true"}[1m]) > 10
+          for: 2m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "Redis 预减库存失败"
+            description: "Redis 预减库存失败率过高，当前失败速率: {{ $value }}/秒"

@@ -1,0 +1,173 @@
+# 秒杀订单服务 - 高并发优化
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flash-order-service
+  namespace: springcloud-alibaba
+  labels:
+    app: flash-order-service
+    component: high-concurrency-service
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: flash-order-service
+  template:
+    metadata:
+      labels:
+        app: flash-order-service
+        component: high-concurrency-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - flash-order-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              until nc -z nacos-service 8848 && nc -z mysql-service 3306 && nc -z redis-service 6379 && nc -z rocketmq-namesrv 9876; do
+                echo "等待依赖服务就绪..."
+                sleep 2
+              done
+      containers:
+        - name: flash-order-service
+          image: registry.example.com/springcloud-alibaba/flash-order-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8083
+              protocol: TCP
+            - name: management
+              containerPort: 9093
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "production"
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: "nacos-service:8848"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://mysql-service:3306/springcloud_alibaba?useUnicode=true&characterEncoding=utf8&useSSL=false&rewriteBatchedStatements=true"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "app"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+            - name: SPRING_REDIS_HOST
+              value: "redis-service"
+            - name: SPRING_REDIS_PORT
+              value: "6379"
+            - name: SPRING_REDIS_PASSWORD
+              value: "redis@2024"
+            - name: ROCKETMQ_NAME_SERVER
+              value: "rocketmq-namesrv:9876"
+            - name: JAVA_OPTS
+              value: "-Xms1024m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+DisableExplicitGC"
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,info,metrics,prometheus"
+            - name: SPRING_SLEUTH_OTP_RECEIVER_ENDPOINT
+              value: "http://jaeger-collector:14268/api/traces"
+            - name: SPRING_APPLICATION_NAME
+              value: "flash-order-service"
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 9093
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 9093
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 4000m
+              memory: 4Gi
+      volumes:
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flash-order-service
+  namespace: springcloud-alibaba
+  labels:
+    app: flash-order-service
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
+      protocol: TCP
+    - name: management
+      port: 9093
+      targetPort: 9093
+      protocol: TCP
+  selector:
+    app: flash-order-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flash-order-service-hpa
+  namespace: springcloud-alibaba
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flash-order-service
+  minReplicas: 5
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 5
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Percent
+          value: 20
+          periodSeconds: 60
+      selectPolicy: Min

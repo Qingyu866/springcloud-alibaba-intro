@@ -1,0 +1,274 @@
+# 秒杀系统专用告警规则
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flash-sale-alerts
+  namespace: flash-sale
+  labels:
+    app: flash-sale
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # 秒杀业务告警组
+  - name: flash_sale_business
+    interval: 30s
+    rules:
+    # 库存告警
+    - alert: FlashSaleStockLow
+      annotations:
+        summary: "秒杀库存告警"
+        description: "活动 {{ $labels.activity_id }} 库存不足，剩余: {{ $value }}"
+      expr: flash_sale_stock_remaining{job="flash-sale-order-service"} < 100
+      for: 1m
+      labels:
+        severity: warning
+        team: sales
+
+    # 订单创建成功率低
+    - alert: FlashSaleOrderSuccessRateLow
+      annotations:
+        summary: "秒杀订单成功率低"
+        description: "订单成功率 {{ $value | humanizePercentage }} < 95%"
+      expr: |
+        rate(
+          flash_sale_orders_total{status="success", job="flash-sale-order-service"}[5m]
+        ) /
+        rate(
+          flash_sale_orders_total{job="flash-sale-order-service"}[5m]
+        ) < 0.95
+      for: 2m
+      labels:
+        severity: warning
+        team: backend
+
+    # RocketMQ 消息堆积
+    - alert: RocketMQMessageBacklog
+      annotations:
+        summary: "RocketMQ 消息堆积"
+        description: "Topic: {{ $labels.topic }}, 堆积消息数: {{ $value }}"
+      expr: rocketmq_broker_message backlog{topic="flash-sale-order-topic"} > 10000
+      for: 3m
+      labels:
+        severity: critical
+        team: backend
+
+    # Redis 连接异常
+    - alert: RedisConnectionFailure
+      annotations:
+        summary: "Redis 连接失败"
+        description: "Redis 实例 {{ $labels.instance }} 连接失败"
+      expr: redis_up{job="redis"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: backend
+
+    # Redis 内存使用率过高
+    - alert: RedisMemoryHigh
+      annotations:
+        summary: "Redis 内存使用率过高"
+        description: "Redis 实例 {{ $labels.instance }} 内存使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        redis_memory_used_bytes{job="redis"} /
+        redis_memory_max_bytes{job="redis"} > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: backend
+
+    # Redis 慢查询
+    - alert: RedisSlowlogHigh
+      annotations:
+        summary: "Redis 慢查询过多"
+        description: "Redis 实例 {{ $labels.instance }} 慢查询数: {{ $value }}"
+      expr: rate(redis_slowlog_length{job="redis"}[5m]) > 10
+      for: 3m
+      labels:
+        severity: warning
+        team: backend
+
+  # 性能告警组
+  - name: flash_sale_performance
+    interval: 30s
+    rules:
+    # 高延迟告警
+    - alert: FlashSaleHighLatency
+      annotations:
+        summary: "秒杀接口延迟过高"
+        description: "{{ $labels.endpoint }} P99 延迟: {{ $value }}s > 0.5s"
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(http_server_requests_seconds_bucket{job="flash-sale-gateway", endpoint=~"/api/flash-sale/.*"}[5m])) by (le, endpoint)
+        ) > 0.5
+      for: 2m
+      labels:
+        severity: warning
+        team: backend
+
+    # 错误率告警
+    - alert: FlashSaleHighErrorRate
+      annotations:
+        summary: "秒杀接口错误率过高"
+        description: "{{ $labels.endpoint }} 错误率: {{ $value | humanizePercentage }}"
+      expr: |
+        sum(rate(http_server_requests_seconds_count{job="flash-sale-gateway", status=~"5..", endpoint=~"/api/flash-sale/.*"}[5m])) by (endpoint)
+        /
+        sum(rate(http_server_requests_seconds_count{job="flash-sale-gateway", endpoint=~"/api/flash-sale/.*"}[5m])) by (endpoint)
+        > 0.05
+      for: 1m
+      labels:
+        severity: critical
+        team: backend
+
+    # QPS 突增告警
+    - alert: FlashSaleQPSAlert
+      annotations:
+        summary: "秒杀 QPS 突增"
+        description: "{{ $labels.endpoint }} QPS: {{ $value }} > 10000"
+      expr: |
+        sum(rate(http_server_requests_seconds_count{job="flash-sale-gateway", endpoint=~"/api/flash-sale/.*"}[1m])) by (endpoint)
+        > 10000
+      for: 1m
+      labels:
+        severity: info
+        team: backend
+
+    # Pod CPU 使用率过高
+    - alert: FlashSalePodCPUHigh
+      annotations:
+        summary: "Pod CPU 使用率过高"
+        description: "Pod {{ $labels.pod }} CPU 使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        sum(rate(container_cpu_usage_seconds_total{namespace="flash-sale", container!=""}[5m])) by (pod)
+        /
+        sum(kube_pod_container_resource_limits{namespace="flash-sale", resource="cpu", unit="core"}) by (pod)
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: backend
+
+    # Pod 内存使用率过高
+    - alert: FlashSalePodMemoryHigh
+      annotations:
+        summary: "Pod 内存使用率过高"
+        description: "Pod {{ $labels.pod }} 内存使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        sum(container_memory_working_set_bytes{namespace="flash-sale", container!=""}) by (pod)
+        /
+        sum(kube_pod_container_resource_limits{namespace="flash-sale", resource="memory"}) by (pod)
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: backend
+
+  # JVM 告警组
+  - name: flash_sale_jvm
+    interval: 30s
+    rules:
+    # JVM 堆内存使用率过高
+    - alert: JVMHeapMemoryHigh
+      annotations:
+        summary: "JVM 堆内存使用率过高"
+        description: "应用 {{ $labels.app }} 堆内存使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        jvm_memory_used_bytes{job="flash-sale-*", area="heap"} /
+        jvm_memory_max_bytes{job="flash-sale-*", area="heap"} > 0.85
+      for: 3m
+      labels:
+        severity: warning
+        team: backend
+
+    # GC 时间过长
+    - alert: JVMGCTimeHigh
+      annotations:
+        summary: "JVM GC 时间过长"
+        description: "应用 {{ $labels.app }} GC 暂停时间: {{ $value }}s"
+      expr: |
+        rate(jvm_gc_pause_seconds_sum{job="flash-sale-*"}[5m]) > 0.1
+      for: 3m
+      labels:
+        severity: warning
+        team: backend
+
+    # GC 频率过高
+    - alert: JVMGCFrequencyHigh
+      annotations:
+        summary: "JVM GC 频率过高"
+        description: "应用 {{ $labels.app }} GC 次数: {{ $value }}/s"
+      expr: |
+        rate(jvm_gc_pause_seconds_count{job="flash-sale-*"}[5m]) > 10
+      for: 3m
+      labels:
+        severity: warning
+        team: backend
+
+  # HPA 告警组
+  - name: flash_sale_hpa
+    interval: 30s
+    rules:
+    # HPA 达到最大副本数
+    - alert: HPAAtMaxCapacity
+      annotations:
+        summary: "HPA 达到最大副本数"
+        description: "HPA {{ $labels.hpa }} 已达到最大副本数: {{ $value }}"
+      expr: kube_hpa_status_current_replicas{namespace="flash-sale"} == kube_hpa_spec_max_replicas{namespace="flash-sale"}
+      for: 5m
+      labels:
+        severity: warning
+        team: backend
+
+    # HPA 频繁扩缩容
+    - alert: HPAFrequentScaling
+      annotations:
+        summary: "HPA 频繁扩缩容"
+        description: "HPA {{ $labels.hpa }} 在 15 分钟内扩缩容超过 5 次"
+      expr: |
+        increase(kube_hpa_status_condition{namespace="flash-sale", condition="True"}[15m]) > 5
+      for: 1m
+      labels:
+        severity: info
+        team: backend
+
+  # 基础设施告警组
+  - name: flash_sale_infrastructure
+    interval: 30s
+    rules:
+    # 服务下线告警
+    - alert: FlashSaleServiceDown
+      annotations:
+        summary: "服务下线"
+        description: "服务 {{ $labels.service }} 所有 Pod 都不可用"
+      expr: |
+        up{job="flash-sale-*"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: backend
+
+    # Pod 重启频繁
+    - alert: FlashSalePodRestarting
+      annotations:
+        summary: "Pod 重启频繁"
+        description: "Pod {{ $labels.pod }} 在 10 分钟内重启超过 3 次"
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="flash-sale"}[10m]) > 3
+      for: 1m
+      labels:
+        severity: warning
+        team: backend
+
+    # 数据库连接池告警
+    - alert: DatabaseConnectionPoolHigh
+      annotations:
+        summary: "数据库连接池使用率过高"
+        description: "应用 {{ $labels.app }} 数据库连接池使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        hikaricp_connections_active{job="flash-sale-*"} /
+        hikaricp_connections_max{job="flash-sale-*"} > 0.9
+      for: 3m
+      labels:
+        severity: warning
+        team: backend

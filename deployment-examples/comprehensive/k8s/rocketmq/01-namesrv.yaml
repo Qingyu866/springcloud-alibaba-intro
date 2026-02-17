@@ -1,0 +1,91 @@
+# RocketMQ NameServer 集群
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rocketmq-namesrv
+  namespace: springcloud-alibaba
+  labels:
+    app: rocketmq
+    component: namesrv
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rocketmq
+      component: namesrv
+  template:
+    metadata:
+      labels:
+        app: rocketmq
+        component: namesrv
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - rocketmq
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: rocketmq-namesrv
+          image: apache/rocketmq:5.3.0
+          command: ['sh', '-c']
+          args:
+            - |
+              cd /home/rocketmq/rocketmq-5.3.0/bin
+              ./mqnamesrv
+          ports:
+            - name: namesrv
+              containerPort: 9876
+              protocol: TCP
+          volumeMounts:
+            - name: logs
+              mountPath: /home/rocketmq/logs
+          livenessProbe:
+            tcpSocket:
+              port: 9876
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 9876
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-namesrv
+  namespace: springcloud-alibaba
+  labels:
+    app: rocketmq
+    component: namesrv
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9876
+      name: namesrv
+      targetPort: 9876
+      protocol: TCP
+  selector:
+    app: rocketmq
+    component: namesrv

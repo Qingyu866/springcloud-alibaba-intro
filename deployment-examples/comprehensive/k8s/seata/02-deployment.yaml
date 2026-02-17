@@ -1,0 +1,124 @@
+# Seata TC Server 集群 (3副本)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seata-server
+  namespace: springcloud-alibaba
+  labels:
+    app: seata
+    component: transaction-coordinator
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: seata
+  template:
+    metadata:
+      labels:
+        app: seata
+        component: transaction-coordinator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9898"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - seata
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: init-seata
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "等待依赖服务就绪..."
+              until nc -z nacos-service 8848; do
+                echo "等待 Nacos 就绪..."
+                sleep 2
+              done
+              until nc -z mysql-service 3306; do
+                echo "等待 MySQL 就绪..."
+                sleep 2
+              done
+              echo "依赖服务已就绪"
+      containers:
+        - name: seata-server
+          image: seataio/seata-server:2.0.0
+          ports:
+            - name: seata-server
+              containerPort: 8091
+              protocol: TCP
+            - name: metrics
+              containerPort: 9898
+              protocol: TCP
+          env:
+            - name: SEATA_PORT
+              value: "8091"
+            - name: STORE_MODE
+              value: "db"
+            - name: SEATA_CONFIG_NAME
+              value: "file:/root/seata-config/file.conf"
+            - name: SEATA_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SEATA_ENV
+              value: "production"
+          volumeMounts:
+            - name: config
+              mountPath: /root/seata-config
+          livenessProbe:
+            tcpSocket:
+              port: 8091
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8091
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: seata-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seata-service
+  namespace: springcloud-alibaba
+  labels:
+    app: seata
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8091
+      name: seata-server
+      targetPort: 8091
+      protocol: TCP
+    - port: 9898
+      name: metrics
+      targetPort: 9898
+      protocol: TCP
+  selector:
+    app: seata

@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reconciliation-cronjob
+  namespace: payment
+  labels:
+    app: reconciliation-service
+    job-type: reconciliation
+spec:
+  # 每30分钟执行一次对账任务
+  schedule: "0/30 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # 并发策略：不允许并发
+  concurrencyPolicy: Forbid
+  # 启动截止秒数
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    metadata:
+      labels:
+        app: reconciliation-service
+        job-type: reconciliation
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: reconciliation-service
+            job-type: reconciliation
+        spec:
+          # 初始化容器：等待依赖服务
+          initContainers:
+          - name: wait-mysql
+            image: busybox:1.35
+            command:
+            - sh
+            - -c
+            - |
+              until nc -z -v -w30 mysql.payment.svc.cluster.local 3306
+              do
+                echo "Waiting for MySQL..."
+                sleep 5
+              done
+          restartPolicy: OnFailure
+          containers:
+          - name: reconciliation-job
+            image: your-registry/reconciliation-service:latest
+            imagePullPolicy: Always
+            command:
+            - sh
+            - -c
+            - |
+              echo "Starting reconciliation job at $(date)"
+              java -jar /app/reconciliation-service.jar \
+                --spring.profiles.active=prod \
+                --reconciliation.task.enabled=true \
+                --reconciliation.task.mode=once
+            env:
+            - name: NACOS_SERVER_ADDR
+              value: "nacos.payment.svc.cluster.local:8848"
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: reconciliation-service-secret
+                  key: mysql-password
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"

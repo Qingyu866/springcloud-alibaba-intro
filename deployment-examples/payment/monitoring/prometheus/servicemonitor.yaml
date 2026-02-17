@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service-monitor
+  namespace: payment
+  labels:
+    app: payment-service
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8087"
+    prometheus.io/path: "/actuator/prometheus"
+spec:
+  selector:
+    app: payment-service
+  ports:
+  - name: metrics
+    port: 8087
+    targetPort: 8087
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: callback-service-monitor
+  namespace: payment
+  labels:
+    app: callback-service
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8089"
+    prometheus.io/path: "/actuator/prometheus"
+spec:
+  selector:
+    app: callback-service
+  ports:
+  - name: metrics
+    port: 8089
+    targetPort: 8089
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reconciliation-service-monitor
+  namespace: payment
+  labels:
+    app: reconciliation-service
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8091"
+    prometheus.io/path: "/actuator/prometheus"
+spec:
+  selector:
+    app: reconciliation-service
+  ports:
+  - name: metrics
+    port: 8091
+    targetPort: 8091
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: payment-service
+  namespace: payment
+  labels:
+    app: payment-service
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /actuator/prometheus
+    scheme: http
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: callback-service
+  namespace: payment
+  labels:
+    app: callback-service
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: callback-service
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /actuator/prometheus
+    scheme: http
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: reconciliation-service
+  namespace: payment
+  labels:
+    app: reconciliation-service
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: reconciliation-service
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /actuator/prometheus
+    scheme: http

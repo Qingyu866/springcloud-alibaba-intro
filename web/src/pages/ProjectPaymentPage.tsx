@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { K8sDeploymentCard } from '../components/K8sDeploymentCard';
 
 const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, code }) => (
   <div className="bg-gray-900 rounded-lg overflow-hidden my-4">
@@ -894,6 +895,8 @@ public class ReconciliationService {
           )}
         </div>
       </section>
+
+      <K8sDeploymentCard projectType="payment" />
 
       {/* Next Steps */}
       <section className="mb-12">

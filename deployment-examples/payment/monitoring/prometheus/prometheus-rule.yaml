@@ -1,0 +1,265 @@
+# 支付系统专用告警规则
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: payment-alerts
+  namespace: payment
+  labels:
+    app: payment
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # 支付业务告警组
+  - name: payment_business
+    interval: 30s
+    rules:
+    # 支付成功率低
+    - alert: PaymentSuccessRateLow
+      annotations:
+        summary: "支付成功率低"
+        description: "支付成功率 {{ $value | humanizePercentage }} < 99%"
+      expr: |
+        rate(
+          payment_requests_total{status="success", job="payment-service"}[5m]
+        ) /
+        rate(
+          payment_requests_total{job="payment-service"}[5m]
+        ) < 0.99
+      for: 2m
+      labels:
+        severity: warning
+        team: payment
+
+    # 支付响应时间 P99 过高
+    - alert: PaymentLatencyHigh
+      annotations:
+        summary: "支付响应时间过高"
+        description: "支付接口 P99 延迟: {{ $value }}s > 3s"
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(payment_latency_seconds_bucket{job="payment-service"}[5m])) by (le, payment_channel)
+        ) > 3
+      for: 2m
+      labels:
+        severity: warning
+        team: payment
+
+    # 对账差异告警
+    - alert: ReconciliationDifferenceDetected
+      annotations:
+        summary: "对账差异告警"
+        description: "检测到对账差异: {{ $value }} 笔"
+      expr: reconciliation_difference_count{job="reconciliation-service"} > 0
+      for: 1m
+      labels:
+        severity: critical
+        team: payment
+
+    # 微信支付异常
+    - alert: WechatPaymentErrorRateHigh
+      annotations:
+        summary: "微信支付错误率过高"
+        description: "微信支付错误率: {{ $value | humanizePercentage }}"
+      expr: |
+        rate(
+          payment_requests_total{payment_channel="wechat", status=~"5.."}[5m]
+        ) /
+        rate(
+          payment_requests_total{payment_channel="wechat"}[5m]
+        ) > 0.05
+      for: 2m
+      labels:
+        severity: warning
+        team: payment
+
+    # 支付宝支付异常
+    - alert: AlipayErrorRateHigh
+      annotations:
+        summary: "支付宝支付错误率过高"
+        description: "支付宝错误率: {{ $value | humanizePercentage }}"
+      expr: |
+        rate(
+          payment_requests_total{payment_channel="alipay", status=~"5.."}[5m]
+        ) /
+        rate(
+          payment_requests_total{payment_channel="alipay"}[5m]
+        ) > 0.05
+      for: 2m
+      labels:
+        severity: warning
+        team: payment
+
+  # 回调服务告警组
+  - name: payment_callback
+    interval: 30s
+    rules:
+    # 回调处理失败率过高
+    - alert: CallbackFailureRateHigh
+      annotations:
+        summary: "回调处理失败率过高"
+        description: "回调失败率: {{ $value | humanizePercentage }}"
+      expr: |
+        rate(
+          callback_requests_total{status="failed", job="callback-service"}[5m]
+        ) /
+        rate(
+          callback_requests_total{job="callback-service"}[5m]
+        ) > 0.01
+      for: 3m
+      labels:
+        severity: warning
+        team: payment
+
+    # 回调处理延迟过高
+    - alert: CallbackLatencyHigh
+      annotations:
+        summary: "回调处理延迟过高"
+        description: "回调处理 P99 延迟: {{ $value }}s > 1s"
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(callback_latency_seconds_bucket{job="callback-service"}[5m])) by (le)
+        ) > 1
+      for: 3m
+      labels:
+        severity: warning
+        team: payment
+
+  # 性能告警组
+  - name: payment_performance
+    interval: 30s
+    rules:
+    # 支付服务 QPS 突增
+    - alert: PaymentQPSAlert
+      annotations:
+        summary: "支付 QPS 突增"
+        description: "支付服务 QPS: {{ $value }} > 2000"
+      expr: |
+        sum(rate(payment_requests_total{job="payment-service"}[1m])) > 2000
+      for: 1m
+      labels:
+        severity: info
+        team: payment
+
+    # Pod CPU 使用率过高
+    - alert: PaymentPodCPUHigh
+      annotations:
+        summary: "Pod CPU 使用率过高"
+        description: "Pod {{ $labels.pod }} CPU 使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        sum(rate(container_cpu_usage_seconds_total{namespace="payment", container!=""}[5m])) by (pod)
+        /
+        sum(kube_pod_container_resource_limits{namespace="payment", resource="cpu", unit="core"}) by (pod)
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: payment
+
+    # Pod 内存使用率过高
+    - alert: PaymentPodMemoryHigh
+      annotations:
+        summary: "Pod 内存使用率过高"
+        description: "Pod {{ $labels.pod }} 内存使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        sum(container_memory_working_set_bytes{namespace="payment", container!=""}) by (pod)
+        /
+        sum(kube_pod_container_resource_limits{namespace="payment", resource="memory"}) by (pod)
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        team: payment
+
+  # JVM 告警组
+  - name: payment_jvm
+    interval: 30s
+    rules:
+    # JVM 堆内存使用率过高
+    - alert: JVMHeapMemoryHigh
+      annotations:
+        summary: "JVM 堆内存使用率过高"
+        description: "应用 {{ $labels.app }} 堆内存使用率: {{ $value | humanizePercentage }}"
+      expr: |
+        jvm_memory_used_bytes{job="payment-*", area="heap"} /
+        jvm_memory_max_bytes{job="payment-*", area="heap"} > 0.85
+      for: 3m
+      labels:
+        severity: warning
+        team: payment
+
+    # GC 时间过长
+    - alert: JVMGCTimeHigh
+      annotations:
+        summary: "JVM GC 时间过长"
+        description: "应用 {{ $labels.app }} GC 暂停时间: {{ $value }}s"
+      expr: |
+        rate(jvm_gc_pause_seconds_sum{job="payment-*"}[5m]) > 0.1
+      for: 3m
+      labels:
+        severity: warning
+        team: payment
+
+  # HPA 告警组
+  - name: payment_hpa
+    interval: 30s
+    rules:
+    # HPA 达到最大副本数
+    - alert: PaymentHPAAtMaxCapacity
+      annotations:
+        summary: "HPA 达到最大副本数"
+        description: "HPA {{ $labels.hpa }} 已达到最大副本数: {{ $value }}"
+      expr: kube_hpa_status_current_replicas{namespace="payment"} == kube_hpa_spec_max_replicas{namespace="payment"}
+      for: 5m
+      labels:
+        severity: warning
+        team: payment
+
+  # 基础设施告警组
+  - name: payment_infrastructure
+    interval: 30s
+    rules:
+    # 支付服务下线告警
+    - alert: PaymentServiceDown
+      annotations:
+        summary: "支付服务下线"
+        description: "服务 {{ $labels.service }} 所有 Pod 都不可用"
+      expr: |
+        up{job="payment-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: payment
+
+    # Redis 连接异常
+    - alert: PaymentRedisConnectionFailure
+      annotations:
+        summary: "Redis 连接失败"
+        description: "支付系统 Redis 连接失败"
+      expr: redis_up{job="payment-*", namespace="payment"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: payment
+
+    # MySQL 连接异常
+    - alert: PaymentMySQLConnectionFailure
+      annotations:
+        summary: "MySQL 连接失败"
+        description: "支付系统 MySQL 连接失败"
+      expr: mysql_up{job="payment-*", namespace="payment"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: payment
+
+    # Seata 连接异常
+    - alert: PaymentSeataConnectionFailure
+      annotations:
+        summary: "Seata 连接失败"
+        description: "支付系统 Seata 连接失败"
+      expr: up{job="seata", namespace="payment"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        team: payment

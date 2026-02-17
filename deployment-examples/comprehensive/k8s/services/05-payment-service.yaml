@@ -1,0 +1,101 @@
+# 支付服务
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: springcloud-alibaba
+  labels:
+    app: payment-service
+    component: business-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9095"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z nacos-service 8848 && nc -z mysql-service 3306; do echo waiting; sleep 2; done;']
+      containers:
+        - name: payment-service
+          image: registry.example.com/springcloud-alibaba/payment-service:latest
+          ports:
+            - name: http
+              containerPort: 8085
+              protocol: TCP
+            - name: management
+              containerPort: 9095
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "production"
+            - name: SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR
+              value: "nacos-service:8848"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://mysql-service:3306/springcloud_alibaba?useUnicode=true&characterEncoding=utf8"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "app"
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: password
+            - name: JAVA_OPTS
+              value: "-Xms512m -Xmx512m -XX:+UseG1GC"
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,info,metrics,prometheus"
+            - name: SPRING_APPLICATION_NAME
+              value: "payment-service"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: springcloud-alibaba
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085
+    - name: management
+      port: 9095
+      targetPort: 9095
+  selector:
+    app: payment-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+  namespace: springcloud-alibaba
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

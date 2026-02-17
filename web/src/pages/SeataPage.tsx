@@ -712,6 +712,284 @@ public class TccAccountServiceImpl implements TccAccountService {
         </div>
       </section>
 
+      {/* 生产级配置 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">生产级配置</h2>
+
+        <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-lg mb-6">
+          <h4 className="font-bold text-gray-900 mb-2">🏭 生产环境要点</h4>
+          <p className="text-gray-700 text-sm">
+            生产环境必须使用集群模式部署 Seata Server，并使用数据库存储模式保证数据可靠性。
+          </p>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Seata Server 集群部署</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application.yml (Seata Server)"
+          code={`# Seata Server 生产级配置
+server:
+  port: 7091
+
+spring:
+  application:
+    name: seata-server
+
+logging:
+  config: classpath:logback-spring.xml
+  file:
+    path: \${user.home}/logs/seata
+  extend:
+    logstash-appender:
+      destination: 127.0.0.1:4560
+    kafka-appender:
+      bootstrap-servers: 127.0.0.1:9092
+      topic: logback_to_logstash
+
+console:
+  user:
+    username: seata
+    password: seata
+
+seata:
+  config:
+    type: nacos
+    nacos:
+      server-addr: 127.0.0.1:8848
+      namespace: seata
+      group: SEATA_GROUP
+      username: nacos
+      password: nacos
+      data-id: seataServer.properties
+  registry:
+    type: nacos
+    nacos:
+      application: seata-server
+      server-addr: 127.0.0.1:8848
+      group: SEATA_GROUP
+      namespace: seata
+      cluster: default
+      username: nacos
+      password: nacos
+  store:
+    mode: db
+    db:
+      datasource: druid
+      db-type: mysql
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://127.0.0.1:3306/seata?rewriteBatchedStatements=true
+      user: root
+      password: root
+      min-conn: 10
+      max-conn: 100
+      global-table: global_table
+      branch-table: branch_table
+      lock-table: lock_table
+      distributed-lock-table: distributed_lock
+      query-limit: 1000
+      max-wait: 5000
+  server:
+    service-port: 8091
+    max-commit-retry-timeout: -1
+    max-rollback-retry-timeout: -1
+    rollback-retry-timeout-unlock-enable: false
+    enable-check-auth: true
+    enable-parallel-request-handle: true
+    retry-dead-threshold: 130000
+    xaer-nota-retry-timeout: 60000
+    enableParallelHandleBranch: true
+  security:
+    secretKey: SeataSecretKey0c382ef121d778043159209298fd40bf3850a017
+    tokenValidityInMilliseconds: 1800000
+    ignore:
+      urls: /,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.jpeg,/**/*.ico,/api/v1/auth/login`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">客户端生产配置</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application.yml (客户端)"
+          code={`# 微服务客户端 Seata 配置
+seata:
+  enabled: true
+  application-id: order-service
+  tx-service-group: my_test_tx_group
+  enable-auto-data-source-proxy: true
+  data-source-proxy-mode: AT
+  config:
+    type: nacos
+    nacos:
+      server-addr: \${NACOS_SERVER:127.0.0.1:8848}
+      namespace: seata
+      group: SEATA_GROUP
+      username: nacos
+      password: nacos
+      data-id: seata.properties
+  registry:
+    type: nacos
+    nacos:
+      application: seata-server
+      server-addr: \${NACOS_SERVER:127.0.0.1:8848}
+      group: SEATA_GROUP
+      namespace: seata
+      username: nacos
+      password: nacos
+      cluster: default
+  client:
+    rm:
+      async-commit-buffer-limit: 10000
+      report-retry-count: 5
+      table-meta-check-enable: true
+      table-meta-checker-interval: 60000
+      report-success-enable: false
+      saga-branch-register-enable: false
+      saga-json-parser: fastjson
+      tcc-action-interceptor-order: -2147482648
+      sql-parser-type: druid
+      lock:
+        retry-interval: 30
+        retry-times: 10
+        retry-policy-branch-rollback-on-conflict: true
+    tm:
+      commit-retry-count: 5
+      rollback-retry-count: 5
+      default-global-transaction-timeout: 60000
+      degrade-check: false
+      degrade-check-period: 2000
+      degrade-check-allow-times: 10
+    undo:
+      data-validation: true
+      log-serialization: jackson
+      log-table: undo_log
+      only-care-update-columns: true
+    load-balance:
+      type: RandomLoadBalance
+      virtual-nodes: 10
+    service:
+      vgroup-mapping:
+        my_test_tx_group: default
+      enable-degrade: false
+      disable-global-transaction: false`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">Docker Compose 集群部署</h3>
+        <CodeBlock
+          language="yaml"
+          filename="docker-compose.yml"
+          code={`version: '3.8'
+services:
+  seata-server-1:
+    image: seataio/seata-server:2.0.0
+    container_name: seata-server-1
+    hostname: seata-server-1
+    ports:
+      - "8091:8091"
+    environment:
+      - SEATA_PORT=8091
+      - STORE_MODE=db
+      - SEATA_IP=seata-server-1
+      - SEATA_CONFIG_NAME=file:/root/seata-config/registry
+    volumes:
+      - ./seata-config:/root/seata-config
+    networks:
+      - seata-network
+    depends_on:
+      - mysql
+      - nacos
+
+  seata-server-2:
+    image: seataio/seata-server:2.0.0
+    container_name: seata-server-2
+    hostname: seata-server-2
+    ports:
+      - "8092:8091"
+    environment:
+      - SEATA_PORT=8091
+      - STORE_MODE=db
+      - SEATA_IP=seata-server-2
+      - SEATA_CONFIG_NAME=file:/root/seata-config/registry
+    volumes:
+      - ./seata-config:/root/seata-config
+    networks:
+      - seata-network
+    depends_on:
+      - mysql
+      - nacos
+
+  seata-server-3:
+    image: seataio/seata-server:2.0.0
+    container_name: seata-server-3
+    hostname: seata-server-3
+    ports:
+      - "8093:8091"
+    environment:
+      - SEATA_PORT=8091
+      - STORE_MODE=db
+      - SEATA_IP=seata-server-3
+      - SEATA_CONFIG_NAME=file:/root/seata-config/registry
+    volumes:
+      - ./seata-config:/root/seata-config
+    networks:
+      - seata-network
+    depends_on:
+      - mysql
+      - nacos
+
+  mysql:
+    image: mysql:8.0
+    container_name: seata-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=seata
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+      - ./sql/seata-mysql.sql:/docker-entrypoint-initdb.d/seata-mysql.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - seata-network
+
+  nacos:
+    image: nacos/nacos-server:v2.2.3
+    container_name: seata-nacos
+    environment:
+      - MODE=standalone
+      - PREFER_HOST_MODE=hostname
+    ports:
+      - "8848:8848"
+    networks:
+      - seata-network
+
+networks:
+  seata-network:
+    driver: bridge`}
+        />
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h4 className="font-bold text-green-900 mb-2">✅ 生产环境检查清单</h4>
+            <ul className="text-sm text-gray-700 space-y-1">
+              <li>• 使用数据库存储模式 (db mode)</li>
+              <li>• 部署至少 3 个 Seata Server 节点</li>
+              <li>• 配置 Nacos 作为注册中心和配置中心</li>
+              <li>• 开启全局事务监控</li>
+              <li>• 配置合理的超时时间</li>
+              <li>• 定期备份 seata 数据库</li>
+            </ul>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h4 className="font-bold text-red-900 mb-2">❌ 常见生产问题</h4>
+            <ul className="text-sm text-gray-700 space-y-1">
+              <li>• 单机部署导致单点故障</li>
+              <li>• 使用 file 模式存储导致数据丢失</li>
+              <li>• 未配置事务超时导致资源锁定</li>
+              <li>• 未开启数据校验导致脏回滚</li>
+              <li>• 网络分区导致事务不一致</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* 最佳实践 */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">最佳实践</h2>

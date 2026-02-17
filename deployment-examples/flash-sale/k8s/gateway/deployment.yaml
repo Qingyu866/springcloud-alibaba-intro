@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: flash-sale
+data:
+  application.yml: |
+    server:
+      port: 8080
+    spring:
+      application:
+        name: flash-sale-gateway
+      cloud:
+        nacos:
+          discovery:
+            server-addr: nacos.flash-sale.svc.cluster.local:8848
+            namespace: flash-sale
+        gateway:
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+          # 秒杀高并发路由配置
+          routes:
+          - id: flash-sale-order
+            uri: lb://flash-sale-order-service
+            predicates:
+            - Path=/api/flash-sale/order/**
+            filters:
+            - StripPrefix=3
+            - name: RequestRateLimiter
+              args:
+                redis-resolver: #{@rateLimiterRedisResolver}
+                replenishRate: 1000
+                burstCapacity: 2000
+          - id: flash-sale-inventory
+            uri: lb://flash-sale-inventory-service
+            predicates:
+            - Path=/api/flash-sale/inventory/**
+            filters:
+            - StripPrefix=3
+          # 全局 CORS 配置
+          globalcors:
+            corsConfigurations:
+              '[/**]':
+                allowedOrigins: "*"
+                allowedMethods:
+                - GET
+                - POST
+                - PUT
+                - DELETE
+                - OPTIONS
+                allowedHeaders: "*"
+                maxAge: 3600
+    # Redis 限流配置
+    redis:
+      cluster:
+        nodes:
+        - redis-0.redis-cluster.flash-sale.svc.cluster.local:6379
+        - redis-1.redis-cluster.flash-sale.svc.cluster.local:6379
+        - redis-2.redis-cluster.flash-sale.svc.cluster.local:6379
+        max-redirects: 3
+      lettuce:
+        pool:
+          max-active: 50
+          max-idle: 25
+          min-idle: 10
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus,gateway
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: flash-sale
+  labels:
+    app: gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - gateway
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: wait-redis
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -v -w30 redis.flash-sale.svc.cluster.local 6379
+          do
+            echo "Waiting for Redis..."
+            sleep 5
+          done
+      containers:
+      - name: gateway
+        image: your-registry/flash-sale-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: management
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "prod"
+        - name: JAVA_OPTS
+          value: "-Xms1g -Xmx2g -XX:+UseG1GC"
+        - name: NACOS_SERVER_ADDR
+          value: "nacos.flash-sale.svc.cluster.local:8848"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8081
+          failureThreshold: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8081
+          initialDelaySeconds: 90
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 5

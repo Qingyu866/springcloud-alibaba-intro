@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: flash-sale
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    name: redis
+    targetPort: 6379
+  - port: 16379
+    name: cluster-bus
+    targetPort: 16379
+  selector:
+    app: redis
+  clusterIP: None
+  publishNotReadyAddresses: true
+
+---
+# Headless Service for cluster discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: flash-sale
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    name: redis
+    targetPort: 6379
+  selector:
+    app: redis
+  clusterIP: None

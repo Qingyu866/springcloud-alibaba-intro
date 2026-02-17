@@ -1,0 +1,214 @@
+# 支付系统 CI/CD 流水线
+stages:
+  - build
+  - test
+  - security
+  - package
+  - deploy-staging
+  - smoke-test
+  - deploy-production
+
+variables:
+  DOCKER_REGISTRY: your-registry.com
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  KUBECONFIG: /tmp/kubeconfig
+
+# 构建阶段
+build:maven:
+  stage: build
+  image: maven:3.8.6-openjdk-11
+  script:
+    - echo "构建支付服务..."
+    - cd payment-service
+    - mvn clean compile -DskipTests
+    - cd ../callback-service
+    - mvn clean compile -DskipTests
+    - cd ../reconciliation-service
+    - mvn clean compile -DskipTests
+  artifacts:
+    paths:
+      - payment-service/target/
+      - callback-service/target/
+      - reconciliation-service/target/
+    expire_in: 1h
+  cache:
+    paths:
+      - .m2/repository
+  only:
+    - main
+    - develop
+    - /^release-.*$/
+
+# 单元测试
+test:unit:
+  stage: test
+  image: maven:3.8.6-openjdk-11
+  dependencies:
+    - build:maven
+  script:
+    - echo "运行单元测试..."
+    - cd payment-service
+    - mvn test
+    - cd ../callback-service
+    - mvn test
+    - cd ../reconciliation-service
+    - mvn test
+  coverage: '/Total Coverage: (\d+\.\d+)%/'
+  artifacts:
+    reports:
+      junit:
+        - payment-service/target/surefire-reports/TEST-*.xml
+        - callback-service/target/surefire-reports/TEST-*.xml
+        - reconciliation-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - payment-service/target/site/jacoco/
+      - callback-service/target/site/jacoco/
+      - reconciliation-service/target/site/jacoco/
+    expire_in: 1h
+  only:
+    - main
+    - develop
+    - /^release-.*$/
+
+# 安全扫描
+security:owasp:
+  stage: security
+  image: maven:3.8.6-openjdk-11
+  dependencies:
+    - build:maven
+  script:
+    - echo "OWASP 依赖检查..."
+    - cd payment-service
+    - mvn org.owasp:dependency-check-maven:check
+    - cd ../callback-service
+    - mvn org.owasp:dependency-check-maven:check
+    - cd ../reconciliation-service
+    - mvn org.owasp:dependency-check-maven:check
+  allow_failure: true
+  artifacts:
+    paths:
+      - payment-service/target/dependency-check-report.html
+      - callback-service/target/dependency-check-report.html
+      - reconciliation-service/target/dependency-check-report.html
+    expire_in: 7d
+  only:
+    - main
+    - /^release-.*$/
+
+# 构建并推送镜像
+package:docker:
+  stage: package
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  dependencies:
+    - test:unit
+  script:
+    - echo "登录镜像仓库..."
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+
+    - echo "构建并推送支付服务镜像..."
+    - cd payment-service
+    - mvn package -DskipTests
+    - docker build -t $DOCKER_REGISTRY/payment-service:$IMAGE_TAG .
+    - docker push $DOCKER_REGISTRY/payment-service:$IMAGE_TAG
+
+    - echo "构建并推送回调服务镜像..."
+    - cd ../callback-service
+    - mvn package -DskipTests
+    - docker build -t $DOCKER_REGISTRY/callback-service:$IMAGE_TAG .
+    - docker push $DOCKER_REGISTRY/callback-service:$IMAGE_TAG
+
+    - echo "构建并推送对账服务镜像..."
+    - cd ../reconciliation-service
+    - mvn package -DskipTests
+    - docker build -t $DOCKER_REGISTRY/reconciliation-service:$IMAGE_TAG .
+    - docker push $DOCKER_REGISTRY/reconciliation-service:$IMAGE_TAG
+  only:
+    - main
+    - /^release-.*$/
+
+# 部署到测试环境
+deploy:staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package:docker
+  script:
+    - echo "部署到测试环境..."
+    - echo $KUBECONFIG_STAGING | base64 -d > $KUBECONFIG
+    - kubectl config use-context staging
+
+    - echo "更新镜像版本..."
+    - kubectl set image deployment/payment-service payment-service=$DOCKER_REGISTRY/payment-service:$IMAGE_TAG -n payment-staging
+    - kubectl set image deployment/callback-service callback-service=$DOCKER_REGISTRY/callback-service:$IMAGE_TAG -n payment-staging
+    - kubectl set image deployment/reconciliation-service reconciliation-service=$DOCKER_REGISTRY/reconciliation-service:$IMAGE_TAG -n payment-staging
+
+    - echo "等待部署完成..."
+    - kubectl rollout status deployment/payment-service -n payment-staging --timeout=10m
+    - kubectl rollout status deployment/callback-service -n payment-staging --timeout=10m
+    - kubectl rollout status deployment/reconciliation-service -n payment-staging --timeout=10m
+  environment:
+    name: staging
+    url: https://payment-staging.example.com
+  only:
+    - develop
+    - /^release-.*$/
+
+# 冒烟测试
+smoke-test:
+  stage: smoke-test
+  image: curlimages/curl:latest
+  dependencies:
+    - deploy:staging
+  script:
+    - echo "执行冒烟测试..."
+
+    - echo "测试支付服务健康检查..."
+    - response=$(curl -s -o /dev/null -w "%{http_code}" https://payment-staging.example.com/actuator/health)
+    - if [ $response -ne 200 ]; then echo "支付服务健康检查失败"; exit 1; fi
+
+    - echo "测试回调服务健康检查..."
+    - response=$(curl -s -o /dev/null -w "%{http_code}" https://payment-staging.example.com/callback/actuator/health)
+    - if [ $response -ne 200 ]; then echo "回调服务健康检查失败"; exit 1; fi
+
+    - echo "冒烟测试通过！"
+  environment:
+    name: staging
+    url: https://payment-staging.example.com
+  only:
+    - develop
+    - /^release-.*$/
+
+# 部署到生产环境（需要手动批准）
+deploy:production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package:docker
+  script:
+    - echo "部署到生产环境..."
+    - echo $KUBECONFIG_PRODUCTION | base64 -d > $KUBECONFIG
+    - kubectl config use-context production
+
+    - echo "金丝雀部署：先部署 10% 流量..."
+    - kubectl set image deployment/payment-service payment-service=$DOCKER_REGISTRY/payment-service:$IMAGE_TAG -n payment
+    - kubectl rollout status deployment/payment-service -n payment --timeout=10m
+
+    - echo "观察 5 分钟..."
+    - sleep 300
+
+    - echo "部署回调服务..."
+    - kubectl set image deployment/callback-service callback-service=$DOCKER_REGISTRY/callback-service:$IMAGE_TAG -n payment
+    - kubectl rollout status deployment/callback-service -n payment --timeout=10m
+
+    - echo "部署对账服务..."
+    - kubectl set image deployment/reconciliation-service reconciliation-service=$DOCKER_REGISTRY/reconciliation-service:$IMAGE_TAG -n payment
+    - kubectl rollout status deployment/reconciliation-service -n payment --timeout=10m
+  environment:
+    name: production
+    url: https://payment.example.com
+  when: manual
+  only:
+    - main
+    - /^release-.*$/

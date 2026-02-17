@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CodeBlock } from '../components';
+import { K8sDeploymentCard } from '../components/K8sDeploymentCard';
 
 interface ChallengeCardProps {
   title: string;
@@ -1032,6 +1033,8 @@ setInterval(checkSeckillStatus, 1000);
           </div>
         </div>
       </section>
+
+      <K8sDeploymentCard projectType="flash-sale" />
 
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">下一步学习</h2>

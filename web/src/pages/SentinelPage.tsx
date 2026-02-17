@@ -268,7 +268,6 @@ java -Dserver.port=8080 -Dcsp.sentinel.app.auth.login=false \\
 
 import org.springframework.web.bind.annotation.*;
 import com.alibaba.csp.sentinel.annotation.SentinelResource;
-import com.alibaba.csp.sentinel.slots.BlockException;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 
 @RestController
@@ -659,6 +658,985 @@ public class ProductController {
         </div>
       </section>
 
+      {/* Gateway集成Sentinel */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">Gateway 集成 Sentinel</h2>
+
+        <p className="text-lg text-gray-700 mb-6">
+          Sentinel 提供了对 Spring Cloud Gateway 的完美支持,可以在网关层面实现统一的流量控制。
+        </p>
+
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg mb-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-3">为什么在网关层集成 Sentinel?</h3>
+          <ul className="space-y-2 text-gray-700">
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>统一流量入口:</strong> 在网关层统一控制所有后端服务的流量</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>细粒度控制:</strong> 基于 Route 和 API 的精细化流控</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>保护后端服务:</strong> 在流量到达后端服务前就进行拦截</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-600 mr-2">•</span>
+              <span><strong>降低响应延迟:</strong> 快速拒绝请求,避免向后转发</span>
+            </li>
+          </ul>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">步骤 1: 添加依赖</h3>
+        <CodeBlock
+          language="xml"
+          code={`<dependencies>
+    <!-- Sentinel 流量控制 -->
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+    </dependency>
+
+    <!-- Sentinel Gateway 适配器 -->
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
+    </dependency>
+
+    <!-- Spring Cloud Gateway -->
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-gateway</artifactId>
+    </dependency>
+</dependencies>`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 2: 配置 Gateway 路由和流控</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application.yml"
+          code={`server:
+  port: 9090
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8719
+      eager: true
+      # Gateway 流控配置
+      filter:
+        enabled: true  # 开启 Gateway 流控
+      # 数据源配置
+      datasource:
+        flow:
+          nacos:
+            server-addr: localhost:8848
+            dataId: \${spring.application.name}-flow-rules
+            groupId: SENTINEL_GROUP
+            rule-type: flow
+    gateway:
+      enabled: true
+      routes:
+        # 用户服务路由
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/user/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                # 每秒允许100个请求
+                redis-rate-limiter.replenishRate: 100
+                # 允许突发200个请求
+                redis-rate-limiter.burstCapacity: 200
+                # 每个请求消耗1个令牌
+                redis-rate-limiter.requestedTokens: 1
+
+        # 订单服务路由
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/order/**
+          filters:
+            - StripPrefix=2`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 3: 自定义限流处理器</h3>
+        <CodeBlock
+          language="java"
+          filename="GatewayBlockHandler.java"
+          code={`package com.example.gateway.handler;
+
+import org.springframework.web.reactive.function.server.ServerResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+/**
+ * Gateway 限流异常处理器
+ */
+@Component
+public class GatewayBlockHandler {
+
+    /**
+     * 处理限流异常
+     */
+    public static Mono<ServerResponse> blockHandler(ServerWebExchange exchange, Throwable ex) {
+        return ServerResponse
+            .status(HttpStatus.TOO_MANY_REQUESTS)
+            .bodyValue(Mono.just("{\"code\":429,\"message\":\"系统繁忙,请稍后再试\"}"));
+    }
+
+    /**
+     * 处理降级异常
+     */
+    public static Mono<ServerResponse> fallbackHandler(ServerWebExchange exchange, Throwable ex) {
+        return ServerResponse
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .bodyValue(Mono.just("{\"code\":503,\"message\":\"服务暂不可用\"}"));
+    }
+}`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 4: 配置 Gateway Filter</h3>
+        <CodeBlock
+          language="java"
+          filename="GatewayConfig.java"
+          code={`package com.example.gateway.config;
+
+import com.alibaba.csp.sentinel.adapter.gateway.common.SentinelGatewayConstants;
+import com.alibaba.csp.sentinel.adapter.gateway.common.api.ApiDefinition;
+import com.alibaba.csp.sentinel.adapter.gateway.common.api.GatewayApiDefinitionManager;
+import com.alibaba.csp.sentinel.adapter.gateway.common.rule.GatewayFlowRule;
+import com.alibaba.csp.sentinel.adapter.gateway.common.rule.GatewayParamFlowItem;
+import com.alibaba.csp.sentinel.adapter.gateway.common.SentinelGatewayFilter;
+import com.alibaba.csp.sentinel.adapter.gateway.scg.SentinelSCGAutoConfiguration;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+
+import javax.annotation.PostConstruct;
+import java.util.HashSet;
+import java.util.Set;
+
+@Configuration
+public class GatewayConfig {
+
+    private final SentinelSCGAutoConfiguration sentinelSCGAutoConfiguration;
+
+    public GatewayConfig(SentinelSCGAutoConfiguration sentinelSCGAutoConfiguration) {
+        this.sentinelSCGAutoConfiguration = sentinelSCGAutoConfiguration;
+    }
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public GlobalFilter sentinelGatewayFilter() {
+        return new SentinelGatewayFilter();
+    }
+
+    @PostConstruct
+    public void doInit() {
+        // 加载网关流控规则
+        initGatewayRules();
+    }
+
+    /**
+     * 配置网关流控规则
+     */
+    private void initGatewayRules() {
+        Set<GatewayFlowRule> rules = new HashSet<>();
+
+        // 用户服务 API 限流
+        rules.add(new GatewayFlowRule("user-service")  // 资源名,对应 route ID
+            .setCount(100)                              // 限流阈值
+            .setIntervalSec(1)                          // 统计时间窗口,单位是秒
+            .setGrade(RuleConstant.FLOW_GRADE_QPS)      // QPS限流
+        );
+
+        // 订单服务 API 限流
+        rules.add(new GatewayFlowRule("order-service")
+            .setCount(50)                               // 限流阈值
+            .setIntervalSec(1)
+        );
+
+        // 自定义 API 分组限流
+        Set<ApiDefinition> definitions = new HashSet<>();
+        ApiDefinition api = new ApiDefinition("user_api")
+            .setPredicateItems(new HashSet<ApiPredicateItem>() {{
+                // 匹配 /api/user/** 的路径
+                add(new ApiPathPredicateItem()
+                    .setPattern("/api/user/**")
+                    .setMatchStrategy(SentinelGatewayConstants.URL_MATCH_STRATEGY_PREFIX));
+            }});
+        definitions.add(api);
+
+        // 为自定义 API 配置限流规则
+        rules.add(new GatewayFlowRule("user_api")
+            .setCount(200)
+            .setIntervalSec(1)
+        );
+
+        GatewayRuleManager.loadRules(rules);
+        GatewayApiDefinitionManager.loadApiDefinitions(definitions);
+    }
+}`}
+        />
+
+        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded mt-6">
+          <p className="text-sm text-gray-700">
+            <strong>💡 生产建议:</strong> 在生产环境中,建议通过 Sentinel 控制台动态配置 Gateway 流控规则,
+            并将规则持久化到 Nacos。这样可以实现规则的实时更新和版本管理。
+          </p>
+        </div>
+      </section>
+
+      {/* 集群流控 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">集群流控</h2>
+
+        <p className="text-lg text-gray-700 mb-6">
+          集群流控可以实现对集群总体流量的控制,适用于多实例部署场景,精确控制整个集群的总流量。
+        </p>
+
+        <div className="bg-purple-50 border-l-4 border-purple-500 p-6 rounded-lg mb-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-3">集群流控 vs 单机流控</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white p-4 rounded">
+              <h4 className="font-bold text-gray-900 mb-2">单机流控</h4>
+              <p className="text-sm text-gray-700 mb-2">每个实例独立控制流量</p>
+              <p className="text-xs text-gray-600">示例: 3个实例,每个限流100 QPS,总共300 QPS</p>
+            </div>
+            <div className="bg-white p-4 rounded">
+              <h4 className="font-bold text-gray-900 mb-2">集群流控</h4>
+              <p className="text-sm text-gray-700 mb-2">整个集群统一控制流量</p>
+              <p className="text-xs text-gray-600">示例: 3个实例,总共限流100 QPS</p>
+            </div>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">集群流控原理</h3>
+        <div className="bg-gray-50 p-6 rounded-lg mb-6">
+          <div className="flex items-center justify-center flex-wrap gap-4 text-center">
+            <div className="p-4 bg-blue-100 rounded-lg">
+              <div className="font-bold mb-2">Token Server</div>
+              <div className="text-sm text-gray-600">集群限流服务器</div>
+            </div>
+            <div className="text-2xl">↓ 分发Token</div>
+            <div className="p-4 bg-green-100 rounded-lg">
+              <div className="font-bold mb-2">Token Client</div>
+              <div className="text-sm text-gray-600">网关/应用实例</div>
+            </div>
+            <div className="text-2xl">↓ 请求Token</div>
+            <div className="p-4 bg-orange-100 rounded-lg">
+              <div className="font-bold mb-2">业务请求</div>
+              <div className="text-sm text-gray-600">实际流量</div>
+            </div>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Token Server 配置</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application-server.yml"
+          code={`server:
+  port: 8080
+
+spring:
+  application:
+    name: sentinel-server
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8719
+      # 集群流控配置
+      cluster:
+        enabled: true
+        mode: server           # server 模式
+        port: 18730            # 集群流控端口
+        client-port: 18729     # 客户端连接端口
+      # 流控规则
+      datasource:
+        flow:
+          nacos:
+            server-addr: localhost:8848
+            dataId: \${spring.application.name}-cluster-flow-rules
+            groupId: SENTINEL_GROUP
+            rule-type: flow
+            # 集群流控配置
+            cluster-mode: true`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">Token Client 配置</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application-client.yml"
+          code={`server:
+  port: 8081
+
+spring:
+  application:
+    name: sentinel-client
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8720
+      # 集群流控配置
+      cluster:
+        enabled: true
+        mode: client           # client 模式
+        server-host: localhost # Token Server 地址
+        server-port: 18730     # Token Server 端口
+        client-port: 18729     # 客户端端口
+      # 流控规则
+      flow:
+        cluster: true          # 启用集群流控
+        cluster-mode: true     # 集群模式`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">集群流控规则配置</h3>
+        <CodeBlock
+          language="java"
+          filename="ClusterFlowConfig.java"
+          code={`package com.example.config;
+
+import com.alibaba.csp.sentinel.*;
+import com.alibaba.csp.sentinel.slots.*;
+import com.alibaba.csp.sentinel.cluster.flow.*;
+import org.springframework.context.annotation.Configuration;
+
+import javax.annotation.PostConstruct;
+import java.util.ArrayList;
+import java.util.List;
+
+@Configuration
+public class ClusterFlowConfig {
+
+    @PostConstruct
+    public void initClusterFlowRules() {
+        List<FlowRule> rules = new ArrayList<>();
+
+        FlowRule rule = new FlowRule();
+        rule.setResource("user-api");
+        rule.setGrade(RuleConstant.FLOW_GRADE_QPS);
+        rule.setCount(1000);                  // 集群总 QPS 阈值
+        rule.setClusterMode(true);            // 启用集群模式
+
+        // 集群流控配置
+        ClusterFlowConfig clusterConfig = new ClusterFlowConfig();
+        clusterConfig.setFallbackToLocalWhenFail(true);  // 失败时降级到本地限流
+        clusterConfig.setStrategy(0);                    // 阈值类型: 0-全局阈值,1-单机阈值
+        clusterConfig.setThreshold(100);                 // 单机阈值(当strategy=1时使用)
+        clusterConfig.setClientOffline(false);           // 客户端离线时不从集群移除
+
+        rule.setClusterConfig(clusterConfig);
+
+        rules.add(rule);
+
+        FlowRuleManager.loadRules(rules);
+    }
+}`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">通过控制台配置集群规则</h3>
+        <div className="bg-gray-50 p-4 rounded-lg mb-6">
+          <p className="text-sm text-gray-700 mb-3">
+            <strong>配置步骤:</strong>
+          </p>
+          <ol className="list-decimal pl-6 space-y-2 text-sm text-gray-700">
+            <li>在 Sentinel 控制台的"集群流控"页面,选择 Token Server</li>
+            <li>配置 Token Server 的地址和端口</li>
+            <li>在"流控规则"中勾选"集群模式"</li>
+            <li>设置集群阈值(总QPS或单机QPS)</li>
+            <li>选择失败策略(快速失败或降级到本地限流)</li>
+          </ol>
+        </div>
+
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded mt-6">
+          <p className="text-sm text-gray-700">
+            <strong>⚠️ 注意事项:</strong>
+            集群流控要求 Token Server 必须高可用。建议部署多个 Token Server 实例,
+            并使用 Nacos 进行服务发现和自动切换。
+          </p>
+        </div>
+      </section>
+
+      {/* 规则持久化到Nacos */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">规则持久化到 Nacos</h2>
+
+        <p className="text-lg text-gray-700 mb-6">
+          将 Sentinel 规则持久化到 Nacos,可以实现规则的集中管理、版本控制和动态更新。
+        </p>
+
+        <div className="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg mb-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-3">持久化的优势</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-start">
+              <span className="text-green-600 mr-2">✓</span>
+              <div>
+                <div className="font-bold">集中管理</div>
+                <div className="text-sm text-gray-600">统一管理所有服务的规则</div>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <span className="text-green-600 mr-2">✓</span>
+              <div>
+                <div className="font-bold">动态更新</div>
+                <div className="text-sm text-gray-600">修改后实时生效,无需重启</div>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <span className="text-green-600 mr-2">✓</span>
+              <div>
+                <div className="font-bold">版本控制</div>
+                <div className="text-sm text-gray-600">支持历史版本回滚</div>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <span className="text-green-600 mr-2">✓</span>
+              <div>
+                <div className="font-bold">环境隔离</div>
+                <div className="text-sm text-gray-600">支持多环境配置(dev/test/prod)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">步骤 1: 配置数据源</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application.yml"
+          code={`spring:
+  application:
+    name: user-service
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8719
+      eager: true
+      # 配置数据源
+      datasource:
+        # 流控规则
+        flow:
+          nacos:
+            server-addr: localhost:8848
+            namespace: public
+            group-id: SENTINEL_GROUP
+            data-id: \${spring.application.name}-flow-rules
+            rule-type: flow
+
+        # 降级规则
+        degrade:
+          nacos:
+            server-addr: localhost:8848
+            namespace: public
+            group-id: SENTINEL_GROUP
+            data-id: \${spring.application.name}-degrade-rules
+            rule-type: degrade
+
+        # 热点规则
+        param-flow:
+          nacos:
+            server-addr: localhost:8848
+            namespace: public
+            group-id: SENTINEL_GROUP
+            data-id: \${spring.application.name}-param-flow-rules
+            rule-type: param-flow
+
+        # 系统规则
+        system:
+          nacos:
+            server-addr: localhost:8848
+            namespace: public
+            group-id: SENTINEL_GROUP
+            data-id: \${spring.application.name}-system-rules
+            rule-type: system
+
+        # 授权规则
+        authority:
+          nacos:
+            server-addr: localhost:8848
+            namespace: public
+            group-id: SENTINEL_GROUP
+            data-id: \${spring.application.name}-authority-rules
+            rule-type: authority`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 2: 在 Nacos 创建配置</h3>
+        <div className="bg-gray-50 p-4 rounded-lg mb-6">
+          <p className="text-sm text-gray-700 mb-3">
+            <strong>在 Nacos 控制台创建配置:</strong>
+          </p>
+          <ul className="space-y-2 text-sm text-gray-700">
+            <li><strong>Data ID:</strong> user-service-flow-rules</li>
+            <li><strong>Group:</strong> SENTINEL_GROUP</li>
+            <li><strong>配置格式:</strong> JSON</li>
+          </ul>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">步骤 3: 配置流控规则</h3>
+        <CodeBlock
+          language="json"
+          filename="user-service-flow-rules (Nacos配置)"
+          code={`[
+    {
+        "resource": "/api/user/getUserInfo",
+        "limitApp": "default",
+        "grade": 1,
+        "count": 100,
+        "strategy": 0,
+        "controlBehavior": 0,
+        "clusterMode": false
+    },
+    {
+        "resource": "/api/user/list",
+        "limitApp": "default",
+        "grade": 1,
+        "count": 50,
+        "strategy": 0,
+        "controlBehavior": 0,
+        "clusterMode": false
+    },
+    {
+        "resource": "/api/user/create",
+        "limitApp": "default",
+        "grade": 1,
+        "count": 20,
+        "strategy": 0,
+        "controlBehavior": 2,
+        "maxQueueingTimeMs": 500,
+        "clusterMode": false
+    }
+]`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 4: 配置降级规则</h3>
+        <CodeBlock
+          language="json"
+          filename="user-service-degrade-rules (Nacos配置)"
+          code={`[
+    {
+        "resource": "/api/user/getUserInfo",
+        "grade": 0,
+        "count": 50,
+        "timeWindow": 10,
+        "minRequestAmount": 10,
+        "statIntervalMs": 1000
+    },
+    {
+        "resource": "/api/user/list",
+        "grade": 1,
+        "count": 1000,
+        "timeWindow": 10,
+        "minRequestAmount": 5,
+        "statIntervalMs": 1000
+    }
+]`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 5: 规则推送工具类</h3>
+        <CodeBlock
+          language="java"
+          filename="SentinelRulePublisher.java"
+          code={`package com.example.util;
+
+import com.alibaba.csp.sentinel.slots.block.RuleConstant;
+import com.alibaba.csp.sentinel.slots.block.flow.FlowRule;
+import com.alibaba.nacos.api.config.ConfigService;
+import com.alibaba.fastjson.JSON;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Sentinel 规则发布工具
+ */
+@Component
+public class SentinelRulePublisher {
+
+    @Autowired
+    private ConfigService nacosConfigService;
+
+    /**
+     * 推送流控规则到 Nacos
+     *
+     * @param appName 应用名称
+     * @param rules   规则列表
+     */
+    public void publishFlowRules(String appName, List<FlowRule> rules) throws Exception {
+        String dataId = appName + "-flow-rules";
+        String groupId = "SENTINEL_GROUP";
+
+        // 转换为 JSON
+        String rulesJson = JSON.toJSONString(rules);
+
+        // 推送到 Nacos
+        boolean success = nacosConfigService.publishConfig(
+            dataId,
+            groupId,
+            rulesJson
+        );
+
+        if (!success) {
+            throw new RuntimeException("发布流控规则失败");
+        }
+    }
+
+    /**
+     * 创建示例流控规则
+     */
+    public List<FlowRule> createSampleFlowRules() {
+        List<FlowRule> rules = new ArrayList<>();
+
+        // 创建流控规则
+        FlowRule rule = new FlowRule();
+        rule.setResource("user-api");
+        rule.setLimitApp("default");
+        rule.setGrade(RuleConstant.FLOW_GRADE_QPS);
+        rule.setCount(100);
+        rule.setStrategy(RuleConstant.STRATEGY_DIRECT);
+        rule.setControlBehavior(RuleConstant.CONTROL_BEHAVIOR_DEFAULT);
+        rule.setClusterMode(false);
+
+        rules.add(rule);
+
+        return rules;
+    }
+}`}
+        />
+
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded mt-6">
+          <p className="text-sm text-gray-700">
+            <strong>💡 工作流程:</strong>
+            1. 在 Nacos 创建配置 → 2. 应用启动时自动拉取规则 → 3. 规则变更时 Nacos 推送更新 → 4. 应用实时加载新规则
+          </p>
+        </div>
+      </section>
+
+      {/* 生产环境监控告警 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">生产环境监控告警</h2>
+
+        <p className="text-lg text-gray-700 mb-6">
+          在生产环境中,需要建立完善的监控告警体系,及时发现和处理异常。
+        </p>
+
+        <div className="bg-orange-50 border-l-4 border-orange-500 p-6 rounded-lg mb-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-3">监控体系架构</h3>
+          <div className="flex items-center justify-center flex-wrap gap-4 text-center">
+            <div className="p-3 bg-white rounded-lg shadow">
+              <div className="font-bold text-sm mb-1">应用</div>
+              <div className="text-xs text-gray-600">Sentinel Metrics</div>
+            </div>
+            <div className="text-xl">→</div>
+            <div className="p-3 bg-white rounded-lg shadow">
+              <div className="font-bold text-sm mb-1">Prometheus</div>
+              <div className="text-xs text-gray-600">指标采集</div>
+            </div>
+            <div className="text-xl">→</div>
+            <div className="p-3 bg-white rounded-lg shadow">
+              <div className="font-bold text-sm mb-1">Grafana</div>
+              <div className="text-xs text-gray-600">可视化监控</div>
+            </div>
+            <div className="text-xl">→</div>
+            <div className="p-3 bg-white rounded-lg shadow">
+              <div className="font-bold text-sm mb-1">AlertManager</div>
+              <div className="text-xs text-gray-600">告警通知</div>
+            </div>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4">步骤 1: 添加依赖</h3>
+        <CodeBlock
+          language="xml"
+          code={`<dependencies>
+    <!-- Sentinel 流量控制 -->
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+    </dependency>
+
+    <!-- Spring Boot Actuator (暴露监控端点) -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- Micrometer Prometheus (指标导出) -->
+    <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
+</dependencies>`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 2: 配置 Actuator 和 Prometheus</h3>
+        <CodeBlock
+          language="yaml"
+          filename="application.yml"
+          code={`management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'  # 暴露所有端点
+  metrics:
+    export:
+      prometheus:
+        enabled: true  # 启用 Prometheus 导出
+    tags:
+      application: \${spring.application.name}  # 添加应用标签
+
+spring:
+  application:
+    name: user-service
+  cloud:
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8719
+      # 启用 Sentinel 指标采集
+      metric:
+        enabled: true
+        file-single-size: 10485760  # 单个文件大小
+        file-total-count: 10        # 文件总数`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 3: Prometheus 采集配置</h3>
+        <CodeBlock
+          language="yaml"
+          filename="prometheus.yml"
+          code={`global:
+  scrape_interval: 15s  # 采集间隔
+  evaluation_interval: 15s  # 规则评估间隔
+
+scrape_configs:
+  - job_name: 'sentinel'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+        - 'localhost:8080'
+    scrape_interval: 15s
+    # 添加标签
+    labels:
+      service: 'user-service'
+      env: 'prod'`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 4: Grafana Dashboard 配置</h3>
+        <CodeBlock
+          language="json"
+          filename="grafana-dashboard.json"
+          code={`{
+    "dashboard": {
+        "title": "Sentinel 监控大屏",
+        "panels": [
+            {
+                "title": "QPS 监控",
+                "type": "graph",
+                "targets": [
+                    {
+                        "expr": "sum(rate(sentinel_resource_pass_qps[1m])) by (resource)",
+                        "legendFormat": "{{resource}}"
+                    }
+                ]
+            },
+            {
+                "title": "拒绝 QPS",
+                "type": "graph",
+                "targets": [
+                    {
+                        "expr": "sum(rate(sentinel_resource_block_qps[1m])) by (resource)",
+                        "legendFormat": "{{resource}}"
+                    }
+                ]
+            },
+            {
+                "title": "响应时间(RT)",
+                "type": "graph",
+                "targets": [
+                    {
+                        "expr": "avg(sentinel_resource_rt) by (resource)",
+                        "legendFormat": "{{resource}}"
+                    }
+                ]
+            },
+            {
+                "title": "异常比例",
+                "type": "graph",
+                "targets": [
+                    {
+                        "expr": "sum(rate(sentinel_resource_exception_qps[1m])) by (resource) / sum(rate(sentinel_resource_pass_qps[1m])) by (resource)",
+                        "legendFormat": "{{resource}}"
+                    }
+                ]
+            }
+        ]
+    }
+}`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 5: 告警规则配置</h3>
+        <CodeBlock
+          language="yaml"
+          filename="alert-rules.yml"
+          code={`groups:
+- name: sentinel_alerts
+  interval: 30s
+  rules:
+  # 高拒绝率告警
+  - alert: HighBlockRate
+    expr: |
+      rate(sentinel_resource_block_qps[1m])
+      / rate(sentinel_resource_pass_qps[1m]) > 0.1
+    for: 5m
+    labels:
+      severity: warning
+      service: user-service
+    annotations:
+      summary: "Sentinel 拒绝率过高"
+      description: "资源 {{ $labels.resource }} 拒绝率超过10%,当前值: {{ $value }}%"
+
+  # 高异常率告警
+  - alert: HighExceptionRate
+    expr: |
+      rate(sentinel_resource_exception_qps[5m])
+      / rate(sentinel_resource_pass_qps[5m]) > 0.05
+    for: 3m
+    labels:
+      severity: critical
+      service: user-service
+    annotations:
+      summary: "Sentinel 异常率过高"
+      description: "资源 {{ $labels.resource }} 异常率超过5%,当前值: {{ $value }}%"
+
+  # 响应时间过长告警
+  - alert: HighResponseTime
+    expr: |
+      avg(sentinel_resource_rt) by (resource) > 1000
+    for: 5m
+    labels:
+      severity: warning
+      service: user-service
+    annotations:
+      summary: "Sentinel 响应时间过长"
+      description: "资源 {{ $labels.resource }} 平均响应时间超过1000ms,当前值: {{ $value }}ms"
+
+  # 熔断告警
+  - alert: CircuitBreakerOpen
+    expr: |
+      sentinel_degrade_status{resource=~".+"} == 1
+    for: 1m
+    labels:
+      severity: critical
+      service: user-service
+    annotations:
+      summary: "Sentinel 熔断触发"
+      description: "资源 {{ $labels.resource }} 已被熔断,请立即检查服务状态"}`}
+        />
+
+        <h3 className="text-xl font-bold text-gray-800 mb-4 mt-6">步骤 6: 自定义监控指标</h3>
+        <CodeBlock
+          language="java"
+          filename="CustomMetricsExporter.java"
+          code={`package com.example.monitor;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 自定义监控指标导出器
+ */
+@Component
+public class CustomMetricsExporter {
+
+    private final Counter requestCounter;
+    private final Counter blockCounter;
+    private final Timer responseTimer;
+
+    public CustomMetricsExporter(MeterRegistry registry) {
+        // 请求计数器
+        this.requestCounter = Counter.builder("sentinel_custom_requests_total")
+            .description("Total requests")
+            .tag("service", "user-service")
+            .register(registry);
+
+        // 限流计数器
+        this.blockCounter = Counter.builder("sentinel_custom_blocks_total")
+            .description("Total blocked requests")
+            .tag("service", "user-service")
+            .register(registry);
+
+        // 响应时间
+        this.responseTimer = Timer.builder("sentinel_custom_response_time")
+            .description("Response time")
+            .tag("service", "user-service")
+            .register(registry);
+    }
+
+    /**
+     * 记录请求
+     */
+    public void recordRequest() {
+        requestCounter.increment();
+    }
+
+    /**
+     * 记录限流
+     */
+    public void recordBlock() {
+        blockCounter.increment();
+    }
+
+    /**
+     * 记录响应时间
+     */
+    public void recordResponseTime(long milliseconds) {
+        responseTimer.record(milliseconds, TimeUnit.MILLISECONDS);
+    }
+}`}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-bold text-gray-900 mb-2">📊 关键监控指标</h4>
+            <ul className="text-sm space-y-1">
+              <li>• passQps: 通过QPS</li>
+              <li>• blockQps: 拒绝QPS</li>
+              <li>• exceptionQps: 异常QPS</li>
+              <li>• rt: 响应时间</li>
+              <li>• threadCount: 线程数</li>
+            </ul>
+          </div>
+          <div className="bg-red-50 p-4 rounded-lg">
+            <h4 className="font-bold text-gray-900 mb-2">🚨 告警建议阈值</h4>
+            <ul className="text-sm space-y-1">
+              <li>• 拒绝率 &gt; 10%: 警告</li>
+              <li>• 拒绝率 &gt; 30%: 严重</li>
+              <li>• 异常率 &gt; 5%: 警告</li>
+              <li>• RT &gt; 1000ms: 警告</li>
+              <li>• 熔断开启: 立即处理</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* 最佳实践 */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">最佳实践</h2>
@@ -872,7 +1850,7 @@ const ConceptCard2: React.FC<ConceptCard2Props> = ({ title, level, description, 
       <p className="text-gray-700 mb-3">{description}</p>
       <div className="text-sm">
         <span className="font-semibold text-gray-600">示例: </span>
-        <code className="text-primary-600">{example}</code>
+        <code className="text-primary">{example}</code>
       </div>
     </div>
   );

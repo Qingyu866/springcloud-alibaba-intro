@@ -49,6 +49,9 @@ export const navigationData: NavGroup[] = [
     title: '🏗️ 架构师进阶',
     description: '培养架构思维,深入系统设计',
     items: [
+      { label: '架构决策记录(ADR)', path: '/architecture-decisions', pageId: 'architecture-decisions', level: 'architect' },
+      { label: '技术选型决策', path: '/tech-selection', pageId: 'tech-selection', level: 'architect' },
+      { label: '架构师软技能', path: '/architect-soft-skills', pageId: 'architect-soft-skills', level: 'architect' },
       { label: '微服务拆分原则', path: '/service-decomposition', pageId: 'service-decomposition', level: 'architect' },
       { label: '服务治理策略', path: '/service-governance', pageId: 'service-governance', level: 'architect' },
       { label: '分布式事务选型', path: '/transaction-selection', pageId: 'transaction-selection', level: 'architect' },
@@ -89,7 +92,7 @@ export const navigationData: NavGroup[] = [
     description: '高频面试题与架构设计',
     items: [
       { label: '面试准备指南', path: '/interview-prep', pageId: 'interview-prep', level: 'beginner' },
-      { label: '高频面试题100+', path: '/interview-questions', pageId: 'interview-questions', level: 'intermediate' },
+      { label: '核心面试题精选', path: '/interview-questions', pageId: 'interview-questions', level: 'intermediate' },
       { label: '架构设计题', path: '/design-questions', pageId: 'design-questions', level: 'architect' },
       { label: '系统设计思路', path: '/system-design', pageId: 'system-design', level: 'architect' },
     ],

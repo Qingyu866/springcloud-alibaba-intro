@@ -1,0 +1,82 @@
+# Redis 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: springcloud-alibaba
+  labels:
+    app: redis
+data:
+  redis.conf: |
+    # Redis 主配置
+    bind 0.0.0.0
+    protected-mode yes
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+
+    # 持久化配置
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+
+    # AOF 配置
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    # 内存配置
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+
+    # 集群配置
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    cluster-replica-validity-factor 10
+    cluster-migration-barrier 1
+    cluster-require-full-coverage yes
+
+    # 日志配置
+    loglevel notice
+    logfile ""
+
+    # 性能优化
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+
+    # 安全配置
+    requirepass redis@2024
+    masterauth redis@2024
+
+  redis-cluster.conf: |
+    port 6379
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    cluster-replica-validity-factor 10
+    cluster-migration-barrier 1
+    cluster-require-full-coverage yes
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    requirepass redis@2024
+    masterauth redis@2024

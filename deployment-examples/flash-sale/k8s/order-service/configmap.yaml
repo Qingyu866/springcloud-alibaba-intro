@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-service-config
+  namespace: flash-sale
+data:
+  application.yml: |
+    server:
+      port: 8082
+      tomcat:
+        threads:
+          max: 800
+          min-spare: 100
+        accept-count: 1000
+        max-connections: 10000
+    spring:
+      application:
+        name: flash-sale-order-service
+      cloud:
+        nacos:
+          discovery:
+            server-addr: nacos.flash-sale.svc.cluster.local:8848
+            namespace: flash-sale
+          config:
+            server-addr: nacos.flash-sale.svc.cluster.local:8848
+            namespace: flash-sale
+            file-extension: yml
+        # Sentinel 限流配置
+        sentinel:
+          transport:
+            dashboard: sentinel.flash-sale.svc.cluster.local:8858
+            port: 8719
+          datasource:
+            # 限流规则
+            flow:
+              nacos:
+                server-addr: nacos.flash-sale.svc.cluster.local:8848
+                namespace: flash-sale
+                group-id: SENTINEL_GROUP
+                data-id: ${spring.application.name}-flow-rules
+                rule-type: flow
+            # 降级规则
+            degrade:
+              nacos:
+                server-addr: nacos.flash-sale.svc.cluster.local:8848
+                namespace: flash-sale
+                group-id: SENTINEL_GROUP
+                data-id: ${spring.application.name}-degrade-rules
+                rule-type: degrade
+      # 数据源配置
+      datasource:
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://mysql.flash-sale.svc.cluster.local:3306/flash_sale?useSSL=false&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+        username: root
+        password: ${MYSQL_PASSWORD}
+        hikari:
+          maximum-pool-size: 100
+          minimum-idle: 20
+          connection-timeout: 30000
+          idle-timeout: 600000
+          max-lifetime: 1800000
+      # Redis 配置（秒杀预减库存）
+      redis:
+        cluster:
+          nodes:
+          - redis-0.redis-cluster.flash-sale.svc.cluster.local:6379
+          - redis-1.redis-cluster.flash-sale.svc.cluster.local:6379
+          - redis-2.redis-cluster.flash-sale.svc.cluster.local:6379
+          max-redirects: 3
+        lettuce:
+          pool:
+            max-active: 100
+            max-wait: -1ms
+            max-idle: 50
+            min-idle: 20
+        timeout: 3000ms
+      # RocketMQ 配置（异步下单）
+      rocketmq:
+        name-server: rocketmq-namesrv.flash-sale.svc.cluster.local:9876
+        producer:
+          group: flash-sale-order-producer
+          send-message-timeout: 3000
+          retry-times-when-send-failed: 2
+          max-message-size: 4194304
+        consumer:
+          group: flash-sale-order-consumer
+          consume-thread-min: 32
+          consume-thread-max: 64
+          consume-timeout: 15
+
+    # 管理端点配置
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus,sentinel
+          base-path: /actuator
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: ${spring.application.name}
+        distribution:
+          percentiles-histogram:
+            http.server.requests: true
+          percentiles:
+            http.server.requests: 0.5, 0.95, 0.99
+      health:
+        readinessState:
+          enabled: true
+        livenessState:
+          enabled: true
+
+    # 秒杀配置
+    flash-sale:
+      # 库存预热
+        enabled: true
+        cron: "0 */5 * * * ?"
+      # Lua 脚本路径
+      lua-scripts:
+        deduct-stock: classpath:lua/deduct_stock.lua
+        rollback-stock: classpath:lua/rollback_stock.lua
+      # 消息队列
+      mq:
+        topic: flash-sale-order-topic
+        tag: create-order
+      # 限流配置
+      rate-limit:
+        qps: 10000
+        burst: 20000
+
+    # 日志配置
+    logging:
+      level:
+        root: INFO
+        com.alibaba.cloud.sentinel: DEBUG
+      pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

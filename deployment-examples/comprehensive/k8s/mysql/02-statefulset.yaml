@@ -1,0 +1,177 @@
+# MySQL 主从集群 - 1主2从
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: springcloud-alibaba
+  labels:
+    app: mysql
+    component: database
+spec:
+  serviceName: mysql-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+        component: database
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - mysql
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: init-mysql
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              # 复制主库配置到第一个 Pod
+              if [ $(hostname) = "mysql-0" ]; then
+                cp /mnt/config-map/master.cnf /mnt/conf.d/server.cnf
+              else
+                cp /mnt/config-map/slave.cnf /mnt/conf.d/server.cnf
+                # 为每个 slave 分配唯一 server-id
+                SERVER_ID=$(( $(hostname | awk -F- '{print $2}') + 2 ))
+                sed -i "s/server-id=2/server-id=$SERVER_ID/" /mnt/conf.d/server.cnf
+              fi
+          volumeMounts:
+            - name: config-map
+              mountPath: /mnt/config-map
+            - name: conf
+              mountPath: /mnt/conf.d
+        - name: clone-mysql
+          image: mysql:8.0
+          command: ['sh', '-c']
+          args:
+            - |
+              # 仅在非首个 Pod 且数据目录为空时克隆数据
+              if [ $(hostname) != "mysql-0" ] && [ ! -d /var/lib/mysql/mysql ]; then
+                until nc -z mysql-0.mysql-headless 3307; do
+                  echo "Waiting for mysql-0 to be ready..."
+                  sleep 2
+                done
+                # 从 mysql-0 克隆数据
+                echo "Cloning data from mysql-0..."
+                mysqldump --all-databases --host=mysql-0.mysql-headless --user=root --password=$MYSQL_ROOT_PASSWORD | \
+                mysql --user=root --password=$MYSQL_ROOT_PASSWORD
+              fi
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - name: mysql
+              containerPort: 3306
+              protocol: TCP
+            - name: metrics
+              containerPort: 9104
+              protocol: TCP
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: root-password
+            - name: MYSQL_REPLICATION_USER
+              value: "repl"
+            - name: MYSQL_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: replication-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: conf
+              mountPath: /etc/mysql/conf.d
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-uroot", "-p$(MYSQL_ROOT_PASSWORD)"]
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - mysql
+                - -uroot
+                - -p$(MYSQL_ROOT_PASSWORD)
+                - -e
+                - SELECT 1
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+        - name: mysqld-exporter
+          image: prom/mysqld-exporter:v0.15.0
+          ports:
+            - name: metrics
+              containerPort: 9104
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "root:$(MYSQL_ROOT_PASSWORD)@(localhost:3306)/"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: conf
+          emptyDir: {}
+        - name: config-map
+          configMap:
+            name: mysql-config
+        - name: init-sql
+          configMap:
+            name: mysql-config
+            items:
+              - key: init-sql.sql
+                path: init.sql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 100Gi

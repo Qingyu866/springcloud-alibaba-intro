@@ -1,4 +1,5 @@
 import { CodeBlock } from '../components';
+import { K8sDeploymentCard } from '../components/K8sDeploymentCard';
 
 interface ModuleCardProps {
   name: string;
@@ -790,6 +791,8 @@ public Result<Order> seckill(Long userId, Long productId) {
           </div>
         </div>
       </section>
+
+      <K8sDeploymentCard projectType="ecommerce" />
 
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">下一步学习</h2>

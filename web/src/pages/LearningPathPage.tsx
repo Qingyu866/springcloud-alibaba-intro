@@ -160,6 +160,57 @@ export const LearningPathPage: React.FC = () => {
         </div>
       </section>
 
+      {/* 架构师能力模型 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">
+          🏗️ 架构师能力模型
+        </h2>
+        <p className="text-lg text-gray-700 mb-6">
+          本指南将帮助您从初级开发者成长为高级架构师,以下是各阶段应具备的核心能力:
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <CapabilityCard
+            level="初级架构师"
+            icon="🌱"
+            color="green"
+            description="能够独立设计和实现微服务模块"
+            capabilities={[
+              '掌握 Spring Cloud Alibaba 核心组件使用',
+              '能够设计简单的微服务架构',
+              '具备基础性能调优能力',
+              '能够处理常见生产问题',
+              '理解分布式系统基本概念'
+            ]}
+          />
+          <CapabilityCard
+            level="中级架构师"
+            icon="🔧"
+            color="blue"
+            description="能够主导中型系统的架构设计"
+            capabilities={[
+              '精通分布式系统设计模式',
+              '能够进行服务拆分和领域建模',
+              '具备完整的可观测性设计能力',
+              '能够处理复杂的生产故障',
+              '掌握高并发、高可用设计'
+            ]}
+          />
+          <CapabilityCard
+            level="高级架构师"
+            icon="🏗️"
+            color="purple"
+            description="能够规划企业级技术架构"
+            capabilities={[
+              '具备全局架构规划能力',
+              '能够设计高可用、高并发系统',
+              '具备技术选型和团队指导能力',
+              '能够推动技术创新和最佳实践',
+              '具备跨团队协作和沟通能力'
+            ]}
+          />
+        </div>
+      </section>
+
       {/* 前置知识 */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">
@@ -199,7 +250,7 @@ export const LearningPathPage: React.FC = () => {
               <strong>💡 提示:</strong> 如果您还不熟悉 Spring Boot,
               建议先花1-2周时间学习 Spring Boot 基础。
               可以参考{' '}
-              <a href="https://spring.io/guides" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+              <a href="https://spring.io/guides" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                 Spring 官方指南
               </a>
             </p>
@@ -376,6 +427,53 @@ const TipCard: React.FC<TipCardProps> = ({ icon, title, description }) => {
   );
 };
 
+// 能力卡片
+interface CapabilityCardProps {
+  level: string;
+  icon: string;
+  color: 'green' | 'blue' | 'purple';
+  description: string;
+  capabilities: string[];
+}
+
+const CapabilityCard: React.FC<CapabilityCardProps> = ({
+  level,
+  icon,
+  color,
+  description,
+  capabilities,
+}) => {
+  const colorClasses = {
+    green: 'bg-green-50 border-green-300',
+    blue: 'bg-blue-50 border-blue-300',
+    purple: 'bg-purple-50 border-purple-300',
+  };
+
+  const iconBgClasses = {
+    green: 'bg-green-100',
+    blue: 'bg-blue-100',
+    purple: 'bg-purple-100',
+  };
+
+  return (
+    <div className={`p-6 border-2 rounded-lg ${colorClasses[color]}`}>
+      <div className="flex items-center mb-3">
+        <span className={`text-3xl mr-3 p-2 rounded-lg ${iconBgClasses[color]}`}>{icon}</span>
+        <h3 className="text-xl font-bold text-gray-900">{level}</h3>
+      </div>
+      <p className="text-gray-700 text-sm mb-4">{description}</p>
+      <ul className="space-y-2">
+        {capabilities.map((capability, index) => (
+          <li key={index} className="flex items-start text-sm text-gray-700">
+            <span className="text-primary mr-2 flex-shrink-0">✓</span>
+            <span>{capability}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 // 新人路径步骤详情
 const beginnerSteps = [
   {
@@ -428,11 +526,11 @@ const beginnerSteps = [
     topics: 5,
   },
   {
-    title: '高频面试题100+',
+    title: '核心面试题精选',
     description: '巩固知识,准备面试',
     duration: '持续',
     level: '🔧 进阶',
-    topics: 100,
+    topics: 25,
   },
 ];
 

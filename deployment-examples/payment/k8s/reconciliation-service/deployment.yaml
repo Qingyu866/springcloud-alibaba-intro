@@ -1,0 +1,225 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reconciliation-service-secret
+  namespace: payment
+type: Opaque
+data:
+  mysql-password: cm9vdF9wYXNzd29yZA==
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reconciliation-service-config
+  namespace: payment
+data:
+  application.yml: |
+    server:
+      port: 8090
+      tomcat:
+        threads:
+          max: 200
+          min-spare: 20
+        accept-count: 200
+        max-connections: 1000
+
+    spring:
+      application:
+        name: reconciliation-service
+      cloud:
+        nacos:
+          discovery:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+          config:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+            file-extension: yml
+      # 数据源配置
+      datasource:
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://mysql.payment.svc.cluster.local:3306/payment?useSSL=false&serverTimezone=Asia/Shanghai
+        username: root
+        password: ${MYSQL_PASSWORD}
+        hikari:
+          maximum-pool-size: 20
+          minimum-idle: 5
+          connection-timeout: 30000
+
+    # 对账配置
+    reconciliation:
+      # 对账任务配置
+      task:
+        enabled: true
+        cron: "0 0/30 * * * ?"  # 每30分钟执行一次
+        timeout: 600000  # 10分钟超时
+      # 对账策略
+      strategy:
+        # 对账时间范围（最近N天）
+        days: 7
+        # 批量大小
+        batch-size: 1000
+        # 并发度
+        threads: 5
+      # 告警配置
+      alert:
+        enabled: true
+        # 差异阈值
+        difference-threshold: 0  # 任何差异都告警
+        # 告警接收人
+        recipients: "payment-team@example.com"
+
+    # 管理端点配置
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus
+          base-path: /actuator
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: ${spring.application.name}
+        distribution:
+          percentiles-histogram:
+            http.server.requests: true
+          percentiles:
+            http.server.requests: 0.5, 0.95, 0.99
+      health:
+        readinessState:
+          enabled: true
+        livenessState:
+          enabled: true
+
+    # 日志配置
+    logging:
+      level:
+        root: INFO
+        com.example.payment.reconciliation: DEBUG
+      pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reconciliation-service
+  namespace: payment
+  labels:
+    app: reconciliation-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reconciliation-service
+  template:
+    metadata:
+      labels:
+        app: reconciliation-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8091"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # 初始化容器：等待依赖服务
+      initContainers:
+      - name: wait-mysql
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -v -w30 mysql.payment.svc.cluster.local 3306
+          do
+            echo "Waiting for MySQL..."
+            sleep 5
+          done
+      containers:
+      - name: reconciliation-service
+        image: your-registry/reconciliation-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8090
+          name: http
+        - containerPort: 8091
+          name: management
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "prod"
+        - name: JAVA_OPTS
+          value: "-Xms256m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError"
+        - name: NACOS_SERVER_ADDR
+          value: "nacos.payment.svc.cluster.local:8848"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: reconciliation-service-secret
+              key: mysql-password
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: logs
+          mountPath: /logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        # 启动探针
+        startupProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8091
+          failureThreshold: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        # 存活探针
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8091
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 就绪探针
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8091
+          initialDelaySeconds: 40
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: reconciliation-service-config
+      - name: logs
+        emptyDir: {}
+      # 优雅终止
+      terminationGracePeriodSeconds: 60
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reconciliation-service
+  namespace: payment
+  labels:
+    app: reconciliation-service
+spec:
+  ports:
+  - port: 8090
+    targetPort: 8090
+    name: http
+  - port: 8091
+    targetPort: 8091
+    name: management
+  selector:
+    app: reconciliation-service

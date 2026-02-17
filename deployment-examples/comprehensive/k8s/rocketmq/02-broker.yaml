@@ -1,0 +1,159 @@
+# RocketMQ Broker 集群 (2副本)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rocketmq-broker
+  namespace: springcloud-alibaba
+  labels:
+    app: rocketmq
+    component: broker
+spec:
+  serviceName: rocketmq-broker-headless
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rocketmq
+      component: broker
+  template:
+    metadata:
+      labels:
+        app: rocketmq
+        component: broker
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - rocketmq
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: init-broker
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              # 等待 NameServer 就绪
+              until nc -z rocketmq-namesrv 9876; do
+                echo "等待 NameServer 就绪..."
+                sleep 2
+              done
+              echo "NameServer 已就绪"
+          volumeMounts:
+            - name: data
+              mountPath: /home/rocketmq/store
+      containers:
+        - name: rocketmq-broker
+          image: apache/rocketmq:5.3.0
+          command: ['sh', '-c']
+          args:
+            - |
+              cd /home/rocketmq/rocketmq-5.3.0/bin
+              ./runbroker.sh \
+                -c /home/rocketmq/conf/broker.conf \
+                --namesrvAddr rocketmq-namesrv:9876 \
+                autoCreateTopicEnable=true \
+                autoCreateSubscriptionGroup=true
+          ports:
+            - name: broker
+              containerPort: 10911
+              protocol: TCP
+            - name: broker-ha
+              containerPort: 10912
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /home/rocketmq/store
+            - name: logs
+              mountPath: /home/rocketmq/logs
+            - name: config
+              mountPath: /home/rocketmq/conf
+          livenessProbe:
+            tcpSocket:
+              port: 10911
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - |
+                  cd /home/rocketmq/rocketmq-5.3.0/bin && \
+                  ./mqadmin clusterList -n rocketmq-namesrv:9876 | grep -q "Broker"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          env:
+            - name: JAVA_OPT_EXT
+              value: "-Xms512m -Xmx512m"
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: rocketmq-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "fast-ssd"
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker-headless
+  namespace: springcloud-alibaba
+  labels:
+    app: rocketmq
+    component: broker
+spec:
+  ports:
+    - port: 10911
+      name: broker
+      targetPort: 10911
+    - port: 10912
+      name: broker-ha
+      targetPort: 10912
+  clusterIP: None
+  selector:
+    app: rocketmq
+    component: broker
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker
+  namespace: springcloud-alibaba
+  labels:
+    app: rocketmq
+    component: broker
+spec:
+  type: ClusterIP
+  ports:
+    - port: 10911
+      name: broker
+      targetPort: 10911
+      protocol: TCP
+  selector:
+    app: rocketmq
+    component: broker

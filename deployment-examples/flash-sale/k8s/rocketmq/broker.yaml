@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: broker-config
+  namespace: flash-sale
+data:
+  broker.conf: |
+    brokerClusterName = DefaultCluster
+    brokerName = broker-a
+    brokerId = 0
+    deleteWhen = 04
+    fileReservedTime = 48
+    brokerRole = ASYNC_MASTER
+    flushDiskType = ASYNC_FLUSH
+    # 秒杀高并发优化
+    maxMessageSize = 4194304
+    messageDelayLevel = 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
+    # 网络线程配置
+    clientManageThreadPoolNums = 32
+    defaultThreadPoolNums = 32
+    # 消息并发消费
+    consumeThreadMin = 32
+    consumeThreadMax = 64
+    # 批量消费
+    pullBatchSize = 32
+    # 拉取间隔
+    pullInterval = 0
+    # 流控
+    maxMsgCntPerTopic = 50000
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rocketmq-broker
+  namespace: flash-sale
+  labels:
+    app: rocketmq-broker
+spec:
+  serviceName: rocketmq-broker
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rocketmq-broker
+  template:
+    metadata:
+      labels:
+        app: rocketmq-broker
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - rocketmq-broker
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: wait-namesrv
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z -v -w30 rocketmq-namesrv.flash-sale.svc.cluster.local 9876
+          do
+            echo "Waiting for RocketMQ NameServer..."
+            sleep 5
+          done
+      containers:
+      - name: broker
+        image: apache/rocketmq:5.3.0
+        command:
+        - sh
+        - -c
+        - |
+          mqnamesrv=$(echo $NAMESRV_ADDR | cut -d: -f1)
+          sed -i "s/namesrvAddr=.*/namesrvAddr=$NAMESRV_ADDR/g" /home/rocketmq/conf/broker.conf
+          updateBroker.sh
+          exec mqbroker -c /home/rocketmq/conf/broker.conf
+        env:
+        - name: NAMESRV_ADDR
+          value: "rocketmq-namesrv.flash-sale.svc.cluster.local:9876"
+        ports:
+        - containerPort: 10909
+          name: broker
+        - containerPort: 10911
+          name: broker-main
+        - containerPort: 10912
+          name: broker-ha
+        volumeMounts:
+        - name: data
+          mountPath: /home/rocketmq/store
+        - name: logs
+          mountPath: /home/rocketmq/logs
+        - name: config
+          mountPath: /home/rocketmq/conf
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          tcpSocket:
+            port: 10911
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - rmqadmin
+            - getBrokerRuntimeInfo
+          initialDelaySeconds: 40
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: broker-config
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 20Gi
+  - metadata:
+      name: logs
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 5Gi
+
+---
+# NameServer
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rocketmq-namesrv
+  namespace: flash-sale
+  labels:
+    app: rocketmq-namesrv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rocketmq-namesrv
+  template:
+    metadata:
+      labels:
+        app: rocketmq-namesrv
+    spec:
+      containers:
+      - name: namesrv
+        image: apache/rocketmq:5.3.0
+        command:
+        - mqnamesrv
+        ports:
+        - containerPort: 9876
+          name: namesrv
+        volumeMounts:
+        - name: logs
+          mountPath: /home/rocketmq/logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 9876
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 9876
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: logs
+        emptyDir: {}

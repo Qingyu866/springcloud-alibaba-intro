@@ -1,0 +1,388 @@
+# Spring Cloud Alibaba 综合项目 - GitLab CI/CD 流水线
+# 支持微服务架构、自动化测试、安全扫描、多环境部署
+
+stages:
+  - build
+  - test
+  - security
+  - package
+  - deploy-staging
+  - integration-test
+  - deploy-production
+
+variables:
+  # Maven 配置
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+
+  # Docker 配置
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+  # Kubernetes 配置
+  KUBECONFIG: /root/.kube/config
+  K8S_NAMESPACE: springcloud-alibaba
+
+  # 镜像标签
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_LATEST: $CI_COMMIT_REF_SLUG
+
+  # 镜像仓库
+  REGISTRY: registry.example.com
+  IMAGE_PREFIX: springcloud-alibaba
+
+# 缓存 Maven 依赖
+.cache_maven: &cache_maven
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .m2/repository/
+      - target/
+
+# 定义所有服务
+.services: &services
+  - gateway
+  - order-service
+  - user-service
+  - payment-service
+  - flash-order-service
+  - inventory-service
+  - callback-service
+  - auth-service
+  - permission-service
+  - tenant-service
+  - profile-service
+  - reconciliation-service
+
+# ==================== 构建阶段 ====================
+
+# 编译所有服务
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  script:
+    - echo "🔨 编译 Spring Cloud Alibaba 项目..."
+    - mvn $MAVEN_CLI_OPTS clean compile -DskipTests
+    - echo "✅ 编译完成"
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# ==================== 测试阶段 ====================
+
+# 单元测试
+unit-test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  dependencies:
+    - build
+  script:
+    - echo "🧪 执行单元测试..."
+    - mvn $MAVEN_CLI_OPTS test
+    - echo "✅ 单元测试通过"
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  artifacts:
+    reports:
+      junit: "**/target/surefire-reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "**/target/site/jacoco/jacoco.xml"
+    paths:
+      - target/site/jacoco/
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# 集成测试
+integration-test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  services:
+    - name: mysql:8.0
+      alias: mysql
+      variables:
+        MYSQL_ROOT_PASSWORD: Root@123456
+        MYSQL_DATABASE: springcloud_alibaba
+    - name: redis:7.2-alpine
+      alias: redis
+    - name: apache/rocketmq:5.3.0
+      alias: rocketmq
+      command: ["mqnamesrv"]
+  variables:
+    SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/springcloud_alibaba?useSSL=false"
+    SPRING_DATASOURCE_USERNAME: root
+    SPRING_DATASOURCE_PASSWORD: Root@123456
+    SPRING_REDIS_HOST: redis
+    SPRING_REDIS_PORT: 6379
+    ROCKETMQ_NAME_SERVER: rocketmq:9876
+  dependencies:
+    - build
+  script:
+    - echo "🔗 执行集成测试..."
+    - mvn $MAVEN_CLI_OPTS verify -DskipUnitTests -Dspring.profiles.active=test
+    - echo "✅ 集成测试通过"
+  artifacts:
+    reports:
+      junit: "**/target/failsafe-reports/TEST-*.xml"
+  only:
+    - main
+    - develop
+
+# ==================== 安全扫描阶段 ====================
+
+# OWASP 依赖检查
+security-scan:
+  stage: security
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  dependencies:
+    - build
+  script:
+    - echo "🔒 执行安全扫描..."
+    - mvn org.owasp:dependency-check-maven:check
+    - echo "✅ 安全扫描完成"
+  artifacts:
+    paths:
+      - target/dependency-check-report.html
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - main
+    - develop
+
+# 容器镜像扫描 (Trivy)
+container-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  dependencies:
+    - package-gateway
+  script:
+    - echo "🔒 扫描容器镜像漏洞..."
+    - trivy image --exit-code 0 --severity HIGH,CRITICAL $REGISTRY/$IMAGE_PREFIX/gateway:$IMAGE_TAG
+    - echo "✅ 镜像扫描完成"
+  allow_failure: true
+  only:
+    - main
+    - develop
+
+# ==================== 镜像构建阶段 ====================
+
+# 为所有服务构建并推送镜像
+.package-template: &package_template
+  stage: package
+  image: docker:24.0-dind
+  services:
+    - docker:24.0-dind
+  dependencies:
+    - build
+    - unit-test
+  before_script:
+    - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin $REGISTRY
+  script:
+    - echo "📦 构建 $SERVICE 镜像..."
+    - cd $SERVICE
+    - docker build -t $REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG .
+    - docker tag $REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG $REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_LATEST
+    - docker push $REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG
+    - docker push $REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_LATEST
+    - echo "✅ $SERVICE 镜像推送完成"
+  only:
+    - main
+    - develop
+
+package-gateway:
+  <<: *package_template
+  variables:
+    SERVICE: gateway
+
+package-order-service:
+  <<: *package_template
+  variables:
+    SERVICE: order-service
+
+package-user-service:
+  <<: *package_template
+  variables:
+    SERVICE: user-service
+
+package-flash-order-service:
+  <<: *package_template
+  variables:
+    SERVICE: flash-order-service
+
+package-inventory-service:
+  <<: *package_template
+  variables:
+    SERVICE: inventory-service
+
+package-payment-service:
+  <<: *package_template
+  variables:
+    SERVICE: payment-service
+
+package-callback-service:
+  <<: *package_template
+  variables:
+    SERVICE: callback-service
+
+package-auth-service:
+  <<: *package_template
+  variables:
+    SERVICE: auth-service
+
+package-permission-service:
+  <<: *package_template
+  variables:
+    SERVICE: permission-service
+
+package-tenant-service:
+  <<: *package_template
+  variables:
+    SERVICE: tenant-service
+
+package-profile-service:
+  <<: *package_template
+  variables:
+    SERVICE: profile-service
+
+package-reconciliation-service:
+  <<: *package_template
+  variables:
+    SERVICE: reconciliation-service
+
+# ==================== 部署到测试环境 ====================
+
+deploy-staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-user-service
+    - package-flash-order-service
+    - package-inventory-service
+    - package-payment-service
+    - package-callback-service
+    - package-auth-service
+    - package-permission-service
+    - package-tenant-service
+    - package-profile-service
+    - package-reconciliation-service
+  script:
+    - echo "🚀 部署到测试环境..."
+    - kubectl config use-context staging
+    # 更新所有服务镜像
+    - |
+      for SERVICE in gateway order-service user-service flash-order-service inventory-service payment-service callback-service auth-service permission-service tenant-service profile-service; do
+        kubectl set image deployment/$SERVICE $SERVICE=$REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG -n $K8S_NAMESPACE-staging
+        kubectl rollout status deployment/$SERVICE -n $K8S_NAMESPACE-staging --timeout=300s
+      done
+    - echo "✅ 测试环境部署完成"
+  environment:
+    name: staging
+    url: https://staging.example.com
+  only:
+    - develop
+
+# ==================== 集成测试 ====================
+
+integration-test-staging:
+  stage: integration-test
+  image: curlimages/curl:latest
+  dependencies:
+    - deploy-staging
+  script:
+    - echo "🔗 执行环境集成测试..."
+    # 健康检查
+    - curl -f https://staging.example.com/actuator/health || exit 1
+    # API 接口测试
+    - curl -f https://staging.example.com/api/user/info || exit 1
+    - curl -f https://staging.example.com/api/order/list || exit 1
+    - echo "✅ 集成测试通过"
+  only:
+    - develop
+
+# ==================== 部署到生产环境 ====================
+
+deploy-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-user-service
+    - package-flash-order-service
+    - package-inventory-service
+    - package-payment-service
+    - package-callback-service
+    - package-auth-service
+    - package-permission-service
+    - package-tenant-service
+    - package-profile-service
+    - package-reconciliation-service
+  script:
+    - echo "🚀 部署到生产环境..."
+    - kubectl config use-context production
+
+    # 策略：金丝雀部署
+    # 1. 先部署秒杀服务（快速扩容能力）
+    - kubectl set image deployment/flash-order-service flash-order-service=$REGISTRY/$IMAGE_PREFIX/flash-order-service:$IMAGE_TAG -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/flash-order-service -n $K8S_NAMESPACE --timeout=300s
+    - echo "⏱️  秒杀服务金丝雀观察期（2分钟）..."
+    - sleep 120
+
+    # 2. 部署网关
+    - kubectl set image deployment/gateway gateway=$REGISTRY/$IMAGE_PREFIX/gateway:$IMAGE_TAG -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/gateway -n $K8S_NAMESPACE --timeout=300s
+
+    # 3. 部署核心服务
+    - |
+      for SERVICE in order-service user-service inventory-service payment-service; do
+        kubectl set image deployment/$SERVICE $SERVICE=$REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG -n $K8S_NAMESPACE
+        kubectl rollout status deployment/$SERVICE -n $K8S_NAMESPACE --timeout=300s
+      done
+
+    # 4. 部署其他服务
+    - |
+      for SERVICE in callback-service auth-service permission-service tenant-service profile-service; do
+        kubectl set image deployment/$SERVICE $SERVICE=$REGISTRY/$IMAGE_PREFIX/$SERVICE:$IMAGE_TAG -n $K8S_NAMESPACE
+        kubectl rollout status deployment/$SERVICE -n $K8S_NAMESPACE --timeout=300s
+      done
+
+    - echo "✅ 生产环境部署完成"
+  environment:
+    name: production
+    url: https://api.example.com
+  when: manual
+  only:
+    - main
+
+# ==================== 回滚任务 ====================
+
+rollback-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  script:
+    - echo "⏪ 回滚生产环境..."
+    - kubectl config use-context production
+    - |
+      for SERVICE in gateway order-service user-service flash-order-service inventory-service payment-service callback-service auth-service permission-service tenant-service profile-service; do
+        kubectl rollout undo deployment/$SERVICE -n $K8S_NAMESPACE
+      done
+    - echo "✅ 回滚完成"
+  environment:
+    name: production
+    action: stop
+  when: manual
+  only:
+    - main

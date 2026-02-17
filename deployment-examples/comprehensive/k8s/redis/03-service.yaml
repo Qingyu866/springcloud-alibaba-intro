@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: springcloud-alibaba
+  labels:
+    app: redis
+spec:
+  ports:
+    - port: 6379
+      name: redis
+      targetPort: 6379
+    - port: 16379
+      name: cluster-bus
+      targetPort: 16379
+    - port: 9121
+      name: metrics
+      targetPort: 9121
+  clusterIP: None
+  selector:
+    app: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: springcloud-alibaba
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      name: redis
+      targetPort: 6379
+      protocol: TCP
+    - port: 9121
+      name: metrics
+      targetPort: 9121
+      protocol: TCP
+  selector:
+    app: redis
+---
+# Redis 集群初始化 Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-init
+  namespace: springcloud-alibaba
+  labels:
+    app: redis
+    component: cluster-init
+spec:
+  template:
+    metadata:
+      labels:
+        app: redis
+        component: cluster-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: redis-cluster-init
+          image: redis:7.2-alpine
+          command: ['sh', '-c']
+          args:
+            - |
+              echo "等待所有 Redis 节点就绪..."
+              sleep 30
+
+              echo "创建 Redis 集群（3主3从）..."
+              redis-cli -a redis@2024 --no-auth-warning \
+                --cluster create \
+                redis-0.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                redis-1.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                redis-2.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                redis-3.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                redis-4.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                redis-5.redis-headless.springcloud-alibaba.svc.cluster.local:6379 \
+                --cluster-replicas 1 \
+                --cluster-yes
+
+              echo "检查集群状态..."
+              redis-cli -a redis@2024 --no-auth-warning \
+                -h redis-0.redis-headless.springcloud-alibaba.svc.cluster.local \
+                cluster info
+
+              echo "Redis 集群初始化完成！"

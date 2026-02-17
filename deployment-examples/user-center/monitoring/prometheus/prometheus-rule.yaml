@@ -1,0 +1,306 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: user-center-alerts
+  namespace: user-center
+  labels:
+    release: prometheus
+    app: user-center
+spec:
+  groups:
+  - name: user-center-service-health
+    interval: 30s
+    rules:
+    # 服务下线告警
+    - alert: UserServiceDown
+      expr: up{job="user-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: user-service
+      annotations:
+        summary: "用户服务下线"
+        description: "用户服务 {{ $labels.instance }} 已下线超过1分钟"
+
+    - alert: AuthServiceDown
+      expr: up{job="auth-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: auth-service
+      annotations:
+        summary: "认证服务下线"
+        description: "认证服务 {{ $labels.instance }} 已下线超过1分钟"
+
+    - alert: PermissionServiceDown
+      expr: up{job="permission-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: permission-service
+      annotations:
+        summary: "权限服务下线"
+        description: "权限服务 {{ $labels.instance }} 已下线超过1分钟"
+
+    - alert: TenantServiceDown
+      expr: up{job="tenant-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: tenant-service
+      annotations:
+        summary: "租户服务下线"
+        description: "租户服务 {{ $labels.instance }} 已下线超过1分钟"
+
+    - alert: ProfileServiceDown
+      expr: up{job="profile-service"} == 0
+      for: 1m
+      labels:
+        severity: warning
+        service: profile-service
+      annotations:
+        summary: "用户画像服务下线"
+        description: "用户画像服务 {{ $labels.instance }} 已下线超过1分钟"
+
+  - name: user-center-performance
+    interval: 30s
+    rules:
+    # 高延迟告警
+    - alert: AuthServiceHighLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(http_server_requests_seconds_bucket{job="auth-service"}[5m])) by (le, path)
+        ) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "认证服务延迟过高"
+        description: "认证服务 P99 延迟超过 500ms，当前值: {{ $value }}s"
+
+    - alert: PermissionServiceHighLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(http_server_requests_seconds_bucket{job="permission-service"}[5m])) by (le, path)
+        ) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: permission-service
+      annotations:
+        summary: "权限校验延迟过高"
+        description: "权限服务 P99 延迟超过 500ms，当前值: {{ $value }}s"
+
+    - alert: UserServiceHighLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(http_server_requests_seconds_bucket{job="user-service"}[5m])) by (le, path)
+        ) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: user-service
+      annotations:
+        summary: "用户服务延迟过高"
+        description: "用户服务 P99 延迟超过 500ms，当前值: {{ $value }}s"
+
+  - name: user-center-auth-security
+    interval: 30s
+    rules:
+    # 登录成功率告警
+    - alert: LowLoginSuccessRate
+      expr: |
+        (
+          sum(rate(auth_login_total{status="success"}[5m])) /
+          sum(rate(auth_login_total[5m]))
+        ) < 0.99
+      for: 5m
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "登录成功率过低"
+        description: "登录成功率低于 99%，当前值: {{ $value | humanizePercentage }}"
+
+    # Token 刷新失败率告警
+    - alert: HighTokenRefreshFailureRate
+      expr: |
+        (
+          sum(rate(auth_token_refresh_total{status="failure"}[5m])) /
+          sum(rate(auth_token_refresh_total[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "Token 刷新失败率过高"
+        description: "Token 刷新失败率超过 5%，当前值: {{ $value | humanizePercentage }}"
+
+    # 暴力破解检测
+    - alert: BruteForceAttackDetected
+      expr: |
+        sum(rate(auth_login_total{status="failure"}[1m])) by (ip) > 10
+      for: 1m
+      labels:
+        severity: critical
+        service: auth-service
+      annotations:
+        summary: "检测到暴力破解攻击"
+        description: "IP {{ $labels.ip }} 在1分钟内登录失败超过10次"
+
+    # JWT 签名校验失败告警
+    - alert: HighJWTValidationErrorRate
+      expr: |
+        sum(rate(auth_jwt_validation_error_total[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "JWT 校验失败率过高"
+        description: "JWT 签名校验失败率超过 10次/秒，可能存在攻击"
+
+  - name: user-center-errors
+    interval: 30s
+    rules:
+    # 高错误率告警
+    - alert: UserServiceHighErrorRate
+      expr: |
+        (
+          sum(rate(http_server_requests_total{job="user-service",status=~"5.."}[5m])) /
+          sum(rate(http_server_requests_total{job="user-service"}[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: user-service
+      annotations:
+        summary: "用户服务错误率过高"
+        description: "用户服务 5xx 错误率超过 5%，当前值: {{ $value | humanizePercentage }}"
+
+    - alert: PermissionServiceHighErrorRate
+      expr: |
+        (
+          sum(rate(http_server_requests_total{job="permission-service",status=~"5.."}[5m])) /
+          sum(rate(http_server_requests_total{job="permission-service"}[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: permission-service
+      annotations:
+        summary: "权限服务错误率过高"
+        description: "权限服务 5xx 错误率超过 5%，当前值: {{ $value | humanizePercentage }}"
+
+  - name: user-center-resources
+    interval: 30s
+    rules:
+    # Pod 重启告警
+    - alert: UserServicePodRestarting
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="user-center",pod=~"user-service-.*"}[1h]) > 0
+      labels:
+        severity: warning
+        service: user-service
+      annotations:
+        summary: "用户服务 Pod 频繁重启"
+        description: "Pod {{ $labels.pod }} 在1小时内重启了 {{ $value }} 次"
+
+    - alert: AuthServicePodRestarting
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="user-center",pod=~"auth-service-.*"}[1h]) > 0
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "认证服务 Pod 频繁重启"
+        description: "Pod {{ $labels.pod }} 在1小时内重启了 {{ $value }} 次"
+
+    # 资源使用率告警
+    - alert: UserServiceHighMemoryUsage
+      expr: |
+        (
+          sum(container_memory_working_set_bytes{namespace="user-center",pod=~"user-service-.*"}) /
+          sum(kube_pod_container_resource_limits{namespace="user-center",pod=~"user-service-.*",resource="memory"})
+        ) > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        service: user-service
+      annotations:
+        summary: "用户服务内存使用率过高"
+        description: "用户服务内存使用率超过 90%，当前值: {{ $value | humanizePercentage }}"
+
+    - alert: AuthServiceHighCPUUsage
+      expr: |
+        (
+          sum(rate(container_cpu_usage_seconds_total{namespace="user-center",pod=~"auth-service-.*"}[5m])) /
+          sum(kube_pod_container_resource_limits{namespace="user-center",pod=~"auth-service-.*",resource="cpu"})
+        ) > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        service: auth-service
+      annotations:
+        summary: "认证服务 CPU 使用率过高"
+        description: "认证服务 CPU 使用率超过 90%，当前值: {{ $value | humanizePercentage }}"
+
+  - name: user-center-database
+    interval: 30s
+    rules:
+    # MySQL 连接池告警
+    - alert: MySQLConnectionPoolExhausted
+      expr: |
+        (
+          sum(hikaricp_connections_active{job="user-service"}) /
+          sum(hikaricp_connections_max{job="user-service"})
+        ) > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        service: user-service
+      annotations:
+        summary: "MySQL 连接池接近耗尽"
+        description: "用户服务 MySQL 连接池使用率超过 90%，当前值: {{ $value | humanizePercentage }}"
+
+    # Redis 连接异常告警
+    - alert: RedisConnectionFailure
+      expr: |
+        sum(rate(redis_connection_errors_total{namespace="user-center"}[5m])) > 10
+      for: 5m
+      labels:
+        severity: critical
+        service: redis
+      annotations:
+        summary: "Redis 连接失败率过高"
+        description: "Redis 连接失败率超过 10次/秒"
+
+  - name: user-center-tenant
+    interval: 30s
+    rules:
+    # 租户隔离失效告警
+    - alert: TenantIsolationFailure
+      expr: |
+        sum(rate(tenant_isolation_failure_total[5m])) > 1
+      for: 5m
+      labels:
+        severity: critical
+        service: tenant-service
+      annotations:
+        summary: "租户隔离失效"
+        description: "检测到租户隔离失败，可能存在数据泄露风险"
+
+    # 租户配额超限告警
+    - alert: TenantQuotaExceeded
+      expr: |
+        sum(tenant_resource_usage{exceeded="true"}) by (tenant_id) > 0
+      for: 5m
+      labels:
+        severity: warning
+        service: tenant-service
+      annotations:
+        summary: "租户资源配额超限"
+        description: "租户 {{ $labels.tenant_id }} 资源配额已超限"

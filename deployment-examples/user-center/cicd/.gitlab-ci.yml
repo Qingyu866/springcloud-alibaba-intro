@@ -1,0 +1,262 @@
+stages:
+  - build
+  - test
+  - package
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  KUBECONFIG: /tmp/kubeconfig
+
+# 缓存 Maven 依赖
+.cache_maven: &cache_maven
+  key:
+    files:
+      - pom.xml
+  paths:
+    - .m2/repository/
+    - target/
+
+# 构建 Maven 项目
+build:
+  stage: build
+  image: maven:3.8-openjdk-17
+  cache:
+    <<: *cache_maven
+  script:
+    - echo "开始编译用户中心项目"
+    - mvn clean compile -DskipTests
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# 单元测试
+test:unit:
+  stage: test
+  image: maven:3.8-openjdk-17
+  cache:
+    <<: *cache_maven
+  script:
+    - echo "运行单元测试"
+    - mvn test -Dtest='!**/*IntegrationTest'
+    - echo "生成测试覆盖率报告"
+    - mvn jacoco:report
+  coverage: '/Total Coverage: (\d+\.\d+)%/'
+  artifacts:
+    paths:
+      - target/site/jacoco/
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# 集成测试
+test:integration:
+  stage: test
+  image: maven:3.8-openjdk-17
+  services:
+    - mysql:8.0
+    - redis:7-alpine
+  variables:
+    MYSQL_DATABASE: user_center_test
+    MYSQL_USER: test
+    MYSQL_PASSWORD: test123
+    MYSQL_ROOT_PASSWORD: root123
+  cache:
+    <<: *cache_maven
+  script:
+    - echo "运行集成测试"
+    - mvn verify -Dtest='**/*IntegrationTest' -Dspring.profiles.active=integration-test
+  artifacts:
+    paths:
+      - target/site/jacoco-it/
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+
+# 代码质量检查
+code_quality:
+  stage: test
+  image: maven:3.8-openjdk-17
+  cache:
+    <<: *cache_maven
+  script:
+    - echo "运行代码质量检查"
+    - mvn checkstyle:check
+    - mvn spotbugs:check
+    - mvn pmd:check
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# 构建并推送 Docker 镜像
+package:user-service:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "构建用户服务镜像"
+    - cd user-service
+    - docker build -t $DOCKER_REGISTRY/user-center/user-service:$CI_COMMIT_SHORT_SHA .
+    - docker tag $DOCKER_REGISTRY/user-center/user-service:$CI_COMMIT_SHORT_SHA $DOCKER_REGISTRY/user-center/user-service:latest
+    - docker push $DOCKER_REGISTRY/user-center/user-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-center/user-service:latest
+  only:
+    - main
+    - develop
+
+package:auth-service:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "构建认证服务镜像"
+    - cd auth-service
+    - docker build -t $DOCKER_REGISTRY/user-center/auth-service:$CI_COMMIT_SHORT_SHA .
+    - docker tag $DOCKER_REGISTRY/user-center/auth-service:$CI_COMMIT_SHORT_SHA $DOCKER_REGISTRY/user-center/auth-service:latest
+    - docker push $DOCKER_REGISTRY/user-center/auth-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-center/auth-service:latest
+  only:
+    - main
+    - develop
+
+package:permission-service:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "构建权限服务镜像"
+    - cd permission-service
+    - docker build -t $DOCKER_REGISTRY/user-center/permission-service:$CI_COMMIT_SHORT_SHA .
+    - docker tag $DOCKER_REGISTRY/user-center/permission-service:$CI_COMMIT_SHORT_SHA $DOCKER_REGISTRY/user-center/permission-service:latest
+    - docker push $DOCKER_REGISTRY/user-center/permission-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-center/permission-service:latest
+  only:
+    - main
+    - develop
+
+package:tenant-service:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "构建租户服务镜像"
+    - cd tenant-service
+    - docker build -t $DOCKER_REGISTRY/user-center/tenant-service:$CI_COMMIT_SHORT_SHA .
+    - docker tag $DOCKER_REGISTRY/user-center/tenant-service:$CI_COMMIT_SHORT_SHA $DOCKER_REGISTRY/user-center/tenant-service:latest
+    - docker push $DOCKER_REGISTRY/user-center/tenant-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-center/tenant-service:latest
+  only:
+    - main
+    - develop
+
+package:profile-service:
+  stage: package
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo $REGISTRY_PASSWORD | docker login -u $REGISTRY_USER --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "构建用户画像服务镜像"
+    - cd profile-service
+    - docker build -t $DOCKER_REGISTRY/user-center/profile-service:$CI_COMMIT_SHORT_SHA .
+    - docker tag $DOCKER_REGISTRY/user-center/profile-service:$CI_COMMIT_SHORT_SHA $DOCKER_REGISTRY/user-center/profile-service:latest
+    - docker push $DOCKER_REGISTRY/user-center/profile-service:$CI_COMMIT_SHORT_SHA
+    - docker push $DOCKER_REGISTRY/user-center/profile-service:latest
+  only:
+    - main
+    - develop
+
+# 部署到开发环境
+deploy:dev:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: development
+    url: https://dev-api.user-center.example.com
+  before_script:
+    - mkdir -p $(dirname $KUBECONFIG)
+    - echo $KUBECONFIG_DEV | base64 -d > $KUBECONFIG
+    - export KUBECONFIG=$KUBECONFIG
+  script:
+    - echo "部署到开发环境"
+    - kubectl config use-context dev-cluster
+    - cd deployment-examples/user-center
+    - kubectl apply -f k8s/00-namespace.yaml
+    - kubectl apply -f k8s/mysql/
+    - kubectl apply -f k8s/redis/
+    - kubectl apply -f k8s/user-service/
+    - kubectl apply -f k8s/auth-service/
+    - kubectl apply -f k8s/permission-service/
+    - kubectl apply -f k8s/tenant-service/
+    - kubectl apply -f k8s/profile-service/
+    - kubectl apply -f k8s/ingress/
+    - echo "等待部署完成..."
+    - kubectl rollout status deployment/user-service -n user-center
+    - kubectl rollout status deployment/auth-service -n user-center
+    - kubectl rollout status deployment/permission-service -n user-center
+    - kubectl rollout status deployment/tenant-service -n user-center
+    - kubectl rollout status deployment/profile-service -n user-center
+    - echo "部署成功!"
+  only:
+    - develop
+
+# 部署到生产环境 (需要手动审批)
+deploy:prod:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://api.user-center.example.com
+  before_script:
+    - mkdir -p $(dirname $KUBECONFIG)
+    - echo $KUBECONFIG_PROD | base64 -d > $KUBECONFIG
+    - export KUBECONFIG=$KUBECONFIG
+  script:
+    - echo "部署到生产环境"
+    - kubectl config use-context prod-cluster
+    - cd deployment-examples/user-center
+    - kubectl apply -f k8s/00-namespace.yaml
+    - kubectl apply -f k8s/mysql/
+    - kubectl apply -f k8s/redis/
+    - kubectl apply -f k8s/user-service/
+    - kubectl apply -f k8s/auth-service/
+    - kubectl apply -f k8s/permission-service/
+    - kubectl apply -f k8s/tenant-service/
+    - kubectl apply -f k8s/profile-service/
+    - kubectl apply -f k8s/ingress/
+    - kubectl apply -f monitoring/prometheus/
+    - echo "等待部署完成..."
+    - kubectl rollout status deployment/user-service -n user-center
+    - kubectl rollout status deployment/auth-service -n user-center
+    - kubectl rollout status deployment/permission-service -n user-center
+    - kubectl rollout status deployment/tenant-service -n user-center
+    - kubectl rollout status deployment/profile-service -n user-center
+    - echo "部署成功!"
+  when: manual
+  only:
+    - main

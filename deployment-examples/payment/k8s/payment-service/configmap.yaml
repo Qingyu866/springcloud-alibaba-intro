@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-config
+  namespace: payment
+data:
+  application.yml: |
+    server:
+      port: 8086
+      tomcat:
+        threads:
+          max: 500
+          min-spare: 50
+        accept-count: 500
+        max-connections: 5000
+
+    spring:
+      application:
+        name: payment-service
+      cloud:
+        nacos:
+          discovery:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+          config:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+            file-extension: yml
+        # Seata 分布式事务配置
+        alibaba:
+          seata:
+            tx-service-group: payment-tx-group
+            registry:
+              type: nacos
+              nacos:
+                server-addr: nacos.payment.svc.cluster.local:8848
+                namespace: payment
+                group: SEATA_GROUP
+                application: seata-server
+            config:
+              type: nacos
+              nacos:
+                server-addr: nacos.payment.svc.cluster.local:8848
+                namespace: payment
+                group: SEATA_GROUP
+      # 数据源配置
+      datasource:
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://mysql.payment.svc.cluster.local:3306/payment?useSSL=false&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true
+        username: root
+        password: ${MYSQL_PASSWORD}
+        hikari:
+          maximum-pool-size: 50
+          minimum-idle: 10
+          connection-timeout: 30000
+          idle-timeout: 600000
+          max-lifetime: 1800000
+      # Redis 配置（幂等性控制）
+      redis:
+        host: redis.payment.svc.cluster.local
+        port: 6379
+        database: 0
+        timeout: 3000ms
+        lettuce:
+          pool:
+            max-active: 50
+            max-wait: -1ms
+            max-idle: 20
+            min-idle: 10
+
+    # 支付配置
+    payment:
+      # 微信支付配置
+      wechat:
+        enabled: true
+        app-id: ${WECHAT_APP_ID}
+        mch-id: ${WECHAT_MCH_ID}
+        api-key: ${WECHAT_API_KEY}
+        api-cert-path: /certs/wechat/apiclient_cert.p12
+        notify-url: https://payment.example.com/callback/wechat
+        # 幂等性配置
+        idempotent:
+          enabled: true
+          cache-ttl: 300  # 5分钟
+          cache-prefix: "payment:wechat:idempotent:"
+          db-unique-key: true  # 启用数据库唯一索引
+
+      # 支付宝支付配置
+      alipay:
+        enabled: true
+        app-id: ${ALIPAY_APP_ID}
+        private-key: ${ALIPAY_PRIVATE_KEY}
+        public-key: ${ALIPAY_PUBLIC_KEY}
+        notify-url: https://payment.example.com/callback/alipay
+        # 幂等性配置
+        idempotent:
+          enabled: true
+          cache-ttl: 300  # 5分钟
+          cache-prefix: "payment:alipay:idempotent:"
+          db-unique-key: true
+
+      # 幂等性通用配置
+      idempotent:
+        enabled: true
+        strategy: redis_and_db  # Redis + 数据库唯一索引
+        redis-ttl: 300  # 5分钟
+        db-unique-key: true
+        # 幂等性键生成策略
+        key-generator: "business_no"  # 使用业务编号作为幂等性键
+
+      # 分布式事务配置
+      transaction:
+        enabled: true
+        mode: AT  # AT 模式
+        timeout: 60000  # 60秒
+        retry-rollback-times: 3
+        retry-commit-times: 3
+
+    # 管理端点配置
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus
+          base-path: /actuator
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: ${spring.application.name}
+        distribution:
+          percentiles-histogram:
+            http.server.requests: true
+          percentiles:
+            http.server.requests: 0.5, 0.95, 0.99
+      health:
+        readinessState:
+          enabled: true
+        livenessState:
+          enabled: true
+
+    # 日志配置
+    logging:
+      level:
+        root: INFO
+        com.example.payment: DEBUG
+        io.seata: INFO
+      pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

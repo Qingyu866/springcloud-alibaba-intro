@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nacos-config
+  namespace: ecommerce
+data:
+  custom.properties: |
+    # 禁用集群模式
+    management.metrics.export.elastic.enabled=false
+    management.metrics.export.influx.enabled=false
+    server.context-path=/nacos
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nacos-secret
+  namespace: ecommerce
+type: Opaque
+data:
+  mysql-user: cm9vdA==  # base64: root
+  mysql-password: cm9vdF9wYXNzd29yZA==  # base64: root_password
+  nacos-auth: YWRtaW4=  # base64: admin
+  nacos-password: TmFjb3RAMTIz  # base64: Nacos@123
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nacos
+  namespace: ecommerce
+spec:
+  serviceName: nacos-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nacos
+  template:
+    metadata:
+      labels:
+        app: nacos
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - nacos
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: nacos
+        image: nacos/nacos-server:v2.2.3
+        ports:
+        - containerPort: 8848
+          name: client-port
+        - containerPort: 9848
+          name: client-rpc
+        - containerPort: 9849
+          name: raft-rpc
+        - containerPort: 7848
+          name: old-raft-rpc
+        env:
+        - name: MODE
+          value: "cluster"
+        - name: NACOS_REPLICAS
+          value: "3"
+        - name: SPRING_DATASOURCE_PLATFORM
+          value: "mysql"
+        - name: MYSQL_SERVICE_HOST
+          value: "mysql-0.mysql-headless.ecommerce.svc.cluster.local"
+        - name: MYSQL_SERVICE_PORT
+          value: "3306"
+        - name: MYSQL_SERVICE_DB_NAME
+          value: "nacos_config"
+        - name: MYSQL_SERVICE_USER
+          valueFrom:
+            secretKeyRef:
+              name: nacos-secret
+              key: mysql-user
+        - name: MYSQL_SERVICE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nacos-secret
+              key: mysql-password
+        - name: NACOS_AUTH_ENABLE
+          value: "true"
+        - name: NACOS_AUTH_TOKEN
+          value: "SecretKey012345678901234567890123456789012345678901234567890123456789"
+        - name: NACOS_AUTH_IDENTITY_KEY
+          value: "nacos"
+        - name: NACOS_AUTH_IDENTITY_VALUE
+          value: "nacos"
+        - name: PREFER_HOST_MODE
+          value: "hostname"
+        volumeMounts:
+        - name: data
+          mountPath: /home/nacos/data
+        - name: logs
+          mountPath: /home/nacos/logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /nacos/actuator/health/liveness
+            port: 8848
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /nacos/actuator/health/readiness
+            port: 8848
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      volumes:
+      - name: data
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 5Gi

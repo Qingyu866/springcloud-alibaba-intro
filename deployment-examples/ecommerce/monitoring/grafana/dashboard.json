@@ -1,0 +1,180 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Spring Cloud Alibaba E-commerce Dashboard",
+    "tags": ["spring-cloud", "ecommerce", "kubernetes"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "服务概览",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{namespace=\"ecommerce\"}",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "请求速率 (RPS)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"ecommerce\"}[1m])) by (service)",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 6, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "错误率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\", namespace=\"ecommerce\"}[5m])) by (service)",
+            "legendFormat": "{{service}} - 5xx"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "P99 延迟",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{namespace=\"ecommerce\"}[5m])) by (service, le))",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 5,
+        "title": "JVM 堆内存使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "jvm_memory_used_bytes{area=\"heap\", namespace=\"ecommerce\"} / jvm_memory_max_bytes{area=\"heap\", namespace=\"ecommerce\"}",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}
+      },
+      {
+        "id": 6,
+        "title": "CPU 使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ecommerce\", container!=\"\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"ecommerce\", resource=\"cpu\"}) by (pod)",
+            "legendFormat": "{{pod}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}
+      },
+      {
+        "id": 7,
+        "title": "数据库连接池使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "hikaricp_connections_active{namespace=\"ecommerce\"} / hikaricp_connections_max{namespace=\"ecommerce\"}",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8}
+      },
+      {
+        "id": 8,
+        "title": "GC 暂停时间",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(jvm_gc_pause_seconds_sum{namespace=\"ecommerce\"}[5m]) / rate(jvm_gc_pause_seconds_count{namespace=\"ecommerce\"}[5m])",
+            "legendFormat": "{{service}}"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8}
+      },
+      {
+        "id": 9,
+        "title": "订单创建趋势",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(order_created_total{namespace=\"ecommerce\"}[5m]))",
+            "legendFormat": "订单/秒"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8}
+      },
+      {
+        "id": 10,
+        "title": "支付成功率",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(payment_success_total{namespace=\"ecommerce\"}[10m])) / sum(rate(payment_total{namespace=\"ecommerce\"}[10m]))",
+            "legendFormat": "成功率"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 32, "w": 6, "h": 4},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 2,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0.9},
+                {"color": "green", "value": 0.95}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Pod 状态",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "kube_pod_status_phase{namespace=\"ecommerce\"}",
+            "legendFormat": "{{pod}}"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 40, "w": 24, "h": 8},
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {"Time": true},
+              "indexByName": {"Value": 0},
+              "renameByName": {"pod": "Pod名称", "phase": "状态"}
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

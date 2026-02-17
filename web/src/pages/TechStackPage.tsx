@@ -164,6 +164,78 @@ export const TechStackPage: React.FC = () => {
         </div>
       </section>
 
+      {/* 版本兼容性说明 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">
+          📦 版本兼容性说明
+        </h2>
+        <p className="text-gray-700 mb-6">
+          Spring Cloud Alibaba 版本更新频繁,请根据您的 Spring Boot 版本选择对应的 Spring Cloud Alibaba 版本。
+        </p>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 border border-gray-300 rounded-lg">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Spring Cloud Alibaba</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Spring Cloud</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Spring Boot</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nacos</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Sentinel</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Seata</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              <tr className="bg-green-50">
+                <td className="px-4 py-3 text-sm text-gray-900 font-medium">2023.0.1.0</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2023.0.1</td>
+                <td className="px-4 py-3 text-sm text-gray-700">3.2.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.3.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.8.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.0.x</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-sm text-gray-900 font-medium">2022.0.0.0</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2022.0.0</td>
+                <td className="px-4 py-3 text-sm text-gray-700">3.0.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.2.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.8.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.7.x</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-sm text-gray-900 font-medium">2021.0.5.0</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2021.0.5</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.6.x / 2.7.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.1.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.8.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.5.x</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-sm text-gray-900 font-medium">2.2.10-RC1</td>
+                <td className="px-4 py-3 text-sm text-gray-700">Hoxton.SR12</td>
+                <td className="px-4 py-3 text-sm text-gray-700">2.3.x / 2.4.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.4.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.8.x</td>
+                <td className="px-4 py-3 text-sm text-gray-700">1.4.x</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+          <p className="text-sm text-gray-700">
+            <strong>⚠️ 注意:</strong> 推荐使用最新稳定版本 (绿色高亮行)。版本不匹配可能导致各种兼容性问题,
+            请参考{' '}
+            <a 
+              href="https://github.com/alibaba/spring-cloud-alibaba/wiki/%E7%89%88%E6%9C%AC%E8%AF%B4%E6%98%8E" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              官方版本说明
+            </a>
+          </p>
+        </div>
+      </section>
+
       {/* 技术选型建议 */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">
@@ -409,7 +481,7 @@ const ComponentCard: React.FC<ComponentCardProps> = ({ name, icon, description, 
             <ul className="space-y-1">
               {features.map((feature, index) => (
                 <li key={index} className="text-xs text-gray-600 flex items-center">
-                  <span className="text-primary-600 mr-1">•</span>
+                  <span className="text-primary mr-1">•</span>
                   {feature}
                 </li>
               ))}

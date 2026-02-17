@@ -35,11 +35,11 @@ export const GettingStartedPage: React.FC = () => {
         <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mt-4">
           <p className="text-gray-700">
             <strong>下载地址:</strong>{' '}
-            <a href="https://www.oracle.com/java/technologies/downloads/" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+            <a href="https://www.oracle.com/java/technologies/downloads/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Oracle JDK
             </a>
             {' '}或{' '}
-            <a href="https://adoptium.net/" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+            <a href="https://adoptium.net/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Eclipse Temurin (OpenJDK)
             </a>
           </p>
@@ -146,7 +146,7 @@ cmd startup.cmd -m standalone`}
 
         <h3 className="text-xl font-bold text-gray-800 mb-3">使用 Spring Initializr</h3>
         <ol className="list-decimal pl-6 space-y-2 mb-4">
-          <li>访问 <a href="https://start.aliyun.com" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">https://start.aliyun.com</a></li>
+          <li>访问 <a href="https://start.aliyun.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">https://start.aliyun.com</a></li>
           <li>选择项目类型:Maven Project</li>
           <li>选择语言:Java</li>
           <li>选择 Spring Boot 版本:3.x</li>
@@ -291,7 +291,7 @@ spring:
           <p className="text-gray-700">
             <strong>注意:</strong> 请确保版本匹配,否则可能出现兼容性问题。
             查看完整版本对应关系请访问{' '}
-            <a href="https://sca.aliyun.com/docs/2023/overview/version-explain/" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+            <a href="https://sca.aliyun.com/docs/2023/overview/version-explain/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               官方文档
             </a>
           </p>

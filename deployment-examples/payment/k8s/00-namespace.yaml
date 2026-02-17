@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payment
+  labels:
+    name: payment
+    environment: production
+    app-type: payment-system
+    # 幂等性标签
+    feature: idempotent-payment
+    # 分布式事务标签
+    feature: distributed-transaction

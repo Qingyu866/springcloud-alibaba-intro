@@ -1,7 +1,21 @@
-@import 'tailwindcss';
+/* ============================================
+ * Spring Cloud Alibaba 学习指南 - 主样式文件
+ * 
+ * Tailwind CSS v4 + 自定义样式
+ * ============================================ */
+
+@import url('./variables.css');
+@import url('./base.css');
+@import url('./layout.css');
+@import url('./components.css');
+@import url('./code.css');
+
+@import "tailwindcss";
 
 @theme {
-  /* Spring Cloud Alibaba Color Palette */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+
   --color-primary-50: #E8F4FD;
   --color-primary-100: #D1E9FA;
   --color-primary-200: #A6D4F7;
@@ -12,115 +26,274 @@
   --color-primary-700: #0058CC;
   --color-primary-800: #0046B8;
   --color-primary-900: #00399E;
-
-  --color-secondary-50: #F0FDF4;
-  --color-secondary-100: #DCFCE7;
-  --color-secondary-200: #BBF7D0;
-  --color-secondary-300: #86EFAC;
-  --color-secondary-400: #4ADE80;
-  --color-secondary-500: #22C55E;
-  --color-secondary-600: #16A34A;
-  --color-secondary-700: #15803D;
-  --color-secondary-800: #166534;
-  --color-secondary-900: #14532D;
-
-  --color-accent-50: #FFFAF0;
-  --color-accent-100: #FEF3C7;
-  --color-accent-200: #FDE68A;
-  --color-accent-300: #FCD34D;
-  --color-accent-400: #FBBF24;
-  --color-accent-500: #F59E0B;
-  --color-accent-600: #D97706;
-  --color-accent-700: #B45309;
-  --color-accent-800: #92400E;
-  --color-accent-900: #78350F;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* --------------------------------------------
+   Tailwind 暗色模式覆盖 - 修复亮色模式下白色文字问题
+   -------------------------------------------- */
+
+/* 亮色模式下确保文字是深色 */
+.text-gray-900 {
+  color: #111827 !important;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #ffffff;
-  color: #1f2937;
-  line-height: 1.6;
+.text-gray-700 {
+  color: #374151 !important;
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.text-gray-600 {
+  color: #4b5563 !important;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
+.text-gray-500 {
+  color: #6b7280 !important;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+.text-gray-400 {
+  color: #9ca3af !important;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+.text-white {
+  color: #ffffff !important;
 }
 
-/* Code Block Styling */
-pre[class*="language-"] {
-  border-radius: 0.5rem;
-  margin: 1rem 0;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+/* 暗色模式下的文字颜色 */
+.dark .text-gray-900 {
+  color: #f8fafc !important;
 }
 
-code[class*="language-"],
-pre[class*="language-"] {
-  text-align: left;
-  white-space: pre;
-  word-spacing: normal;
-  word-break: normal;
-  word-wrap: normal;
-  line-height: 1.5;
-  tab-size: 4;
-  hyphens: none;
+.dark .text-gray-700 {
+  color: #e2e8f0 !important;
 }
 
-/* Inline Code */
-:not(pre) > code[class*="language-"] {
-  padding: 0.2em 0.4em;
-  margin: 0;
-  font-size: 85%;
-  background-color: rgba(175, 184, 193, 0.2);
-  border-radius: 3px;
+.dark .text-gray-600 {
+  color: #cbd5e1 !important;
 }
 
-/* Smooth transitions */
-a, button {
-  transition: all 0.2s ease-in-out;
+.dark .text-gray-500 {
+  color: #94a3b8 !important;
 }
 
-/* Focus states for accessibility */
-a:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--color-primary-500);
-  outline-offset: 2px;
+.dark .text-gray-400 {
+  color: #64748b !important;
 }
 
-/* Responsive images */
-img {
-  max-width: 100%;
-  height: auto;
+.dark .text-white {
+  color: #ffffff !important;
 }
 
-/* Print styles */
+/* --------------------------------------------
+   文本颜色工具类
+   -------------------------------------------- */
+
+.text-primary-600 {
+  color: var(--color-primary-600);
+}
+
+.text-primary-700 {
+  color: var(--color-primary-700);
+}
+
+.text-primary-300 {
+  color: var(--color-primary-300);
+}
+
+/* --------------------------------------------
+   背景颜色工具类
+   -------------------------------------------- */
+
+.bg-primary-50 {
+  background-color: var(--color-primary-50);
+}
+
+.bg-primary-100 {
+  background-color: var(--color-primary-100);
+}
+
+.bg-primary-600 {
+  background-color: var(--color-primary-600);
+}
+
+.bg-primary-700 {
+  background-color: var(--color-primary-700);
+}
+
+.bg-primary-900\/20 {
+  background-color: rgba(0, 57, 158, 0.2);
+}
+
+/* --------------------------------------------
+   边框颜色工具类
+   -------------------------------------------- */
+
+.border-primary-200 {
+  border-color: var(--color-primary-200);
+}
+
+.border-primary-300 {
+  border-color: var(--color-primary-300);
+}
+
+.border-primary-500 {
+  border-color: var(--color-primary-500);
+}
+
+.border-primary-700 {
+  border-color: var(--color-primary-700);
+}
+
+/* --------------------------------------------
+   悬停状态
+   -------------------------------------------- */
+
+.hover\:bg-primary-100:hover {
+  background-color: var(--color-primary-100);
+}
+
+.hover\:bg-primary-700:hover {
+  background-color: var(--color-primary-700);
+}
+
+.hover\:bg-primary-800:hover {
+  background-color: var(--color-primary-800);
+}
+
+.hover\:text-primary-600:hover {
+  color: var(--color-primary-600);
+}
+
+.hover\:text-primary-700:hover {
+  color: var(--color-primary-700);
+}
+
+.hover\:text-primary-900:hover {
+  color: var(--color-primary-900);
+}
+
+.hover\:text-primary-200:hover {
+  color: var(--color-primary-200);
+}
+
+.hover\:border-primary-300:hover {
+  border-color: var(--color-primary-300);
+}
+
+/* --------------------------------------------
+   暗色模式覆盖
+   -------------------------------------------- */
+
+.dark .text-primary-600 {
+  color: #60a5fa;
+}
+
+.dark .text-primary-700 {
+  color: #93c5fd;
+}
+
+.dark .text-primary-300 {
+  color: #93c5fd;
+}
+
+.dark .text-primary-200 {
+  color: #bfdbfe;
+}
+
+.dark .bg-primary-50 {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.dark .bg-primary-100 {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+.dark .bg-primary-600 {
+  background-color: #3b82f6;
+}
+
+.dark .bg-primary-700 {
+  background-color: #2563eb;
+}
+
+.dark .bg-primary-900\/20 {
+  background-color: rgba(30, 58, 138, 0.3);
+}
+
+.dark .border-primary-200 {
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.dark .border-primary-300 {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.dark .border-primary-500 {
+  border-color: #3b82f6;
+}
+
+.dark .border-primary-700 {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.dark .hover\:bg-primary-100:hover {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+.dark .hover\:bg-primary-700:hover {
+  background-color: #2563eb;
+}
+
+.dark .hover\:bg-primary-800:hover {
+  background-color: #1d4ed8;
+}
+
+.dark .hover\:text-primary-600:hover {
+  color: #60a5fa;
+}
+
+.dark .hover\:text-primary-700:hover {
+  color: #93c5fd;
+}
+
+.dark .hover\:text-primary-900:hover {
+  color: #bfdbfe;
+}
+
+.dark .hover\:text-primary-200:hover {
+  color: #93c5fd;
+}
+
+.dark .hover\:border-primary-300:hover {
+  border-color: #3b82f6;
+}
+
+/* --------------------------------------------
+   按钮容器上边距
+   -------------------------------------------- */
+
+.content-section .text-center {
+  margin-top: var(--spacing-8);
+}
+
+/* --------------------------------------------
+   打印样式
+   -------------------------------------------- */
+
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/* --------------------------------------------
+   减少动画偏好
+   -------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

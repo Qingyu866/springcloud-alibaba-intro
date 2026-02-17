@@ -1,0 +1,206 @@
+{
+  "dashboard": {
+    "title": "支付系统监控",
+    "tags": ["payment", "spring-cloud-alibaba"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "支付成功率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(payment_requests_total{status=\"success\", job=\"payment-service\"}[5m]) / rate(payment_requests_total{job=\"payment-service\"}[5m])"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "支付 QPS",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(payment_requests_total{job=\"payment-service\"}[1m])) by (payment_channel)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "支付响应时间 P99",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(payment_latency_seconds_bucket{job=\"payment-service\"}[5m])) by (le, payment_channel))"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "支付渠道分布",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(increase(payment_requests_total{job=\"payment-service\"}[5m])) by (payment_channel)"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "回调处理成功率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(callback_requests_total{status=\"success\", job=\"callback-service\"}[5m]) / rate(callback_requests_total{job=\"callback-service\"}[5m])"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "对账差异统计",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "reconciliation_difference_count{job=\"reconciliation-service\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "JVM 堆内存使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "jvm_memory_used_bytes{job=\"payment-*\", area=\"heap\"} / jvm_memory_max_bytes{job=\"payment-*\", area=\"heap\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "GC 暂停时间",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(jvm_gc_pause_seconds_sum{job=\"payment-*\"}[5m])"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Pod 副本数",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "kube_hpa_status_current_replicas{namespace=\"payment\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "CPU 使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"payment\", container!=\"\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"payment\", resource=\"cpu\", unit=\"core\"}) by (pod)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "内存使用率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(container_memory_working_set_bytes{namespace=\"payment\", container!=\"\"}) by (pod) / sum(kube_pod_container_resource_limits{namespace=\"payment\", resource=\"memory\"}) by (pod)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Redis 连接数",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "redis_connected_clients{job=\"payment-*\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

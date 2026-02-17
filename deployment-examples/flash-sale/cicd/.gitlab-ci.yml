@@ -1,0 +1,290 @@
+# 秒杀系统 - GitLab CI/CD 流水线配置
+# 针对 Redis 预减库存 + RocketMQ 异步下单的高并发场景优化
+
+stages:
+  - build
+  - test
+  - security
+  - package
+  - deploy-staging
+  - smoke-test
+  - deploy-production
+
+variables:
+  # Maven 配置
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  # Docker 配置
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  # Kubernetes 配置
+  KUBECONFIG: /root/.kube/config
+  # 镜像标签
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_LATEST: $CI_COMMIT_BRANCH
+
+# 缓存 Maven 依赖
+.cache_maven: &cache_maven
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .m2/repository/
+      - target/
+
+# 构建阶段
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  script:
+    - echo "🔨 编译秒杀系统代码..."
+    - mvn $MAVEN_CLI_OPTS clean compile -DskipTests
+    - echo "✅ 编译完成"
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# 单元测试
+unit-test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  dependencies:
+    - build
+  script:
+    - echo "🧪 执行单元测试..."
+    - mvn $MAVEN_CLI_OPTS test
+    - echo "✅ 单元测试通过"
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  artifacts:
+    reports:
+      junit: "**/target/surefire-reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "**/target/site/jacoco/jacoco.xml"
+    paths:
+      - target/site/jacoco/
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - /^feature\/.*$/
+
+# 集成测试（Redis + RocketMQ）
+integration-test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  services:
+    - name: redis:7.2-alpine
+      alias: redis
+    - name: apache/rocketmq:5.3.0
+      alias: rocketmq
+      command: ["mqnamesrv"]
+  variables:
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    ROCKETMQ_NAME_SERVER: rocketmq:9876
+  dependencies:
+    - build
+  script:
+    - echo "🔗 执行集成测试（Redis 预减库存 + RocketMQ 异步下单）..."
+    - mvn $MAVEN_CLI_OPTS verify -DskipUnitTests -Dspring.profiles.active=test
+    - echo "✅ 集成测试通过"
+  artifacts:
+    reports:
+      junit: "**/target/failsafe-reports/TEST-*.xml"
+  only:
+    - main
+    - develop
+
+# 安全扫描
+security-scan:
+  stage: security
+  image: maven:3.9-eclipse-temurin-17-alpine
+  <<: *cache_maven
+  dependencies:
+    - build
+  script:
+    - echo "🔒 执行安全扫描..."
+    # OWASP 依赖检查
+    - mvn org.owasp:dependency-check-maven:check
+    # Spring Boot 安全检查
+    - mvn spring-boot:check
+    - echo "✅ 安全扫描完成"
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - target/dependency-check-report.html
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - main
+    - develop
+
+# 构建并推送 Docker 镜像
+package-gateway:
+  stage: package
+  image: docker:24.0-dind
+  services:
+    - docker:24.0-dind
+  dependencies:
+    - build
+    - unit-test
+  before_script:
+    - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "📦 构建网关镜像..."
+    - cd gateway
+    - docker build -t $DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_TAG .
+    - docker tag $DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_TAG $DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_LATEST
+    - docker push $DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_TAG
+    - docker push $DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_LATEST
+    - echo "✅ 网关镜像推送完成"
+  only:
+    - main
+    - develop
+
+package-order-service:
+  stage: package
+  image: docker:24.0-dind
+  services:
+    - docker:24.0-dind
+  dependencies:
+    - build
+    - unit-test
+  before_script:
+    - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "📦 构建订单服务镜像..."
+    - cd order-service
+    - docker build -t $DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_TAG .
+    - docker tag $DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_TAG $DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_LATEST
+    - docker push $DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_TAG
+    - docker push $DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_LATEST
+    - echo "✅ 订单服务镜像推送完成"
+  only:
+    - main
+    - develop
+
+package-inventory-service:
+  stage: package
+  image: docker:24.0-dind
+  services:
+    - docker:24.0-dind
+  dependencies:
+    - build
+    - unit-test
+  before_script:
+    - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "📦 构建库存服务镜像..."
+    - cd inventory-service
+    - docker build -t $DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_TAG .
+    - docker tag $DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_TAG $DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_LATEST
+    - docker push $DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_TAG
+    - docker push $DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_LATEST
+    - echo "✅ 库存服务镜像推送完成"
+  only:
+    - main
+    - develop
+
+# 部署到测试环境
+deploy-staging:
+  stage: deploy-staging
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-inventory-service
+  script:
+    - echo "🚀 部署到测试环境..."
+    - kubectl config use-context staging
+    # 更新镜像
+    - kubectl set image deployment/gateway gateway=$DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_TAG -n flash-sale-staging
+    - kubectl set image deployment/order-service order-service=$DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_TAG -n flash-sale-staging
+    - kubectl set image deployment/inventory-service inventory-service=$DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_TAG -n flash-sale-staging
+    # 等待部署完成
+    - kubectl rollout status deployment/gateway -n flash-sale-staging --timeout=300s
+    - kubectl rollout status deployment/order-service -n flash-sale-staging --timeout=300s
+    - kubectl rollout status deployment/inventory-service -n flash-sale-staging --timeout=300s
+    - echo "✅ 测试环境部署完成"
+  environment:
+    name: staging
+    url: https://flash-sale-staging.example.com
+  only:
+    - develop
+
+# 冒烟测试
+smoke-test:
+  stage: smoke-test
+  image: curlimages/curl:latest
+  dependencies:
+    - deploy-staging
+  script:
+    - echo "💨 执行冒烟测试..."
+    # 健康检查
+    - curl -f https://flash-sale-staging.example.com/actuator/health || exit 1
+    # 秒杀接口测试
+    - curl -f -X POST https://flash-sale-staging.example.com/api/flash-sale/order/create \
+        -H "Content-Type: application/json" \
+        -d '{"userId": "test", "activityId": "1", "quantity": 1}' || exit 1
+    - echo "✅ 冒烟测试通过"
+  only:
+    - develop
+
+# 部署到生产环境（需要手动批准）
+deploy-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  dependencies:
+    - package-gateway
+    - package-order-service
+    - package-inventory-service
+  script:
+    - echo "🚀 部署到生产环境..."
+    - kubectl config use-context production
+    # 金丝雀部署：先部署 20% 流量
+    - kubectl patch deployment order-service -n flash-sale -p '{"spec":{"replicas": 10}}'
+    - sleep 30
+    - kubectl set image deployment/order-service order-service=$DOCKER_REGISTRY/flash-sale-order-service:$IMAGE_TAG -n flash-sale
+    # 等待金丝雀部署完成
+    - kubectl rollout status deployment/order-service -n flash-sale --timeout=300s
+    - echo "⏱️  金丝雀观察期（2分钟）..."
+    - sleep 120
+    # 全量部署
+    - kubectl set image deployment/gateway gateway=$DOCKER_REGISTRY/flash-sale-gateway:$IMAGE_TAG -n flash-sale
+    - kubectl set image deployment/inventory-service inventory-service=$DOCKER_REGISTRY/flash-sale-inventory-service:$IMAGE_TAG -n flash-sale
+    - kubectl rollout status deployment/gateway -n flash-sale --timeout=300s
+    - kubectl rollout status deployment/inventory-service -n flash-sale --timeout=300s
+    - echo "✅ 生产环境部署完成"
+  environment:
+    name: production
+    url: https://flash-sale.example.com
+  when: manual
+  only:
+    - main
+
+# 回滚任务
+rollback-production:
+  stage: deploy-production
+  image: bitnami/kubectl:latest
+  script:
+    - echo "⏪ 回滚生产环境..."
+    - kubectl config use-context production
+    - kubectl rollout undo deployment/gateway -n flash-sale
+    - kubectl rollout undo deployment/order-service -n flash-sale
+    - kubectl rollout undo deployment/inventory-service -n flash-sale
+    - echo "✅ 回滚完成"
+  environment:
+    name: production
+    action: stop
+  when: manual
+  only:
+    - main

@@ -950,6 +950,497 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
         </div>
       </section>
 
+      {/* 安全工具与 DevSecOps */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">8. 安全工具与自动化</h2>
+
+        <div className="space-y-6">
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">OWASP ZAP - 渗透测试工具</h3>
+            <CodeBlock
+              language="bash"
+              code={`# 安装 OWASP ZAP
+# macOS
+brew install --cask owasp-zap
+
+# 或下载 Docker 镜像
+docker pull zaproxy/zap-stable:latest
+docker run -u zap -p 8080:8080 zaproxy/zap-stable:latest zap-webswing.sh
+
+# 命令行扫描
+# 1. 爬虫扫描
+zap-cli quick-scan --self-contained \
+  --start-options '-config api.disablekey=true' \
+  http://localhost:8080
+
+# 2. 指定爬虫深度
+zap-cli spider http://localhost:8080
+
+# 3. 主动扫描
+zap-cli active-scan http://localhost:8080
+
+# 4. 生成报告
+zap-cli report -o zap-report.html -f html
+
+# 5. 导出 findings
+zap-cli alerts -l High`}
+            />
+            <div className="mt-4 bg-green-50 border border-green-200 rounded p-4">
+              <h4 className="font-bold text-green-900 mb-2">✅ 扫描内容</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• SQL 注入检测</li>
+                <li>• XSS 跨站脚本攻击</li>
+                <li>• CSRF 跨站请求伪造</li>
+                <li>• 敏感信息泄露</li>
+                <li>• 不安全的直接对象引用</li>
+                <li>• 安全配置错误</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">SonarQube - 代码质量与安全扫描</h3>
+            <CodeBlock
+              language="bash"
+              code={`# Docker Compose 部署 SonarQube
+version: '3.8'
+services:
+  sonarqube:
+    image: sonarqube:9.9-community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_URL=jdbc:postgresql://postgres:5432/sonar
+      - SONAR_JDBC_USERNAME=sonar
+      - SONAR_JDBC_PASSWORD=sonar
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - sonar-net
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sonar-net
+
+networks:
+  sonar-net:
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  postgres_data:`}
+            />
+            <CodeBlock
+              language="bash"
+              code={`# Maven 扫描配置
+# pom.xml
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.sonarsource.scanner.maven</groupId>
+      <artifactId>sonar-maven-plugin</artifactId>
+      <version>3.9.1.2184</version>
+    </plugin>
+  </plugins>
+</build>
+
+# 执行扫描
+mvn clean verify sonar:sonar \\
+  -Dsonar.projectKey=my-project \\
+  -Dsonar.host.url=http://localhost:9000 \\
+  -Dsonar.login=admin \\
+  -Dsonar.password=admin
+
+# 查看 Scan Report
+# 访问 http://localhost:9000
+# Dashboard → Project → Your Project`}
+            />
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded p-4">
+              <h4 className="font-bold text-blue-900 mb-2">📊 质量阈值（Quality Gate）</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• <strong>Bugs</strong>: 阻断，不允许上线</li>
+                <li>• <strong>漏洞</strong>: 严重漏洞必须修复</li>
+                <li>• <strong>代码覆盖率</strong>: {'>='} 80%</li>
+                <li>• <strong>代码异味</strong>: 警告级别</li>
+                <li>• <strong>安全热点</strong>: 必须审查</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Trivy - 容器镜像与文件系统扫描</h3>
+            <CodeBlock
+              language="bash"
+              code={`# 安装 Trivy
+# macOS
+brew install trivy
+
+# 扫描 Docker 镜像
+trivy image harbor.example.com/prod/order-service:1.0.0
+
+# 只扫描严重漏洞
+trivy image --severity HIGH,CRITICAL \\
+  harbor.example.com/prod/order-service:1.0.0
+
+# 扫描文件系统
+trivy fs /path/to/project
+
+# 扫描 Git 仓库
+trivy repo https://github.com/example/project
+
+# 扫描配置文件
+trivy config ./deployment.yaml
+
+# JSON 输出
+trivy image -f json \\
+  -o trivy-report.json \\
+  harbor.example.com/prod/order-service:1.0.0
+
+# 漏洞白名单配置
+# trivy.yaml
+skip-dirs:
+  - /vendor
+  - /tests
+
+# 允许的漏洞
+ignore-unfixed: true`}
+            />
+            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded p-4">
+              <h4 className="font-bold text-yellow-900 mb-2">⚠️ 扫描类型</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• <strong>OS 包漏洞</strong>: Alpine、Ubuntu、Debian</li>
+                <li>• <strong>应用依赖</strong>: Maven、npm、pip</li>
+                <li>• <strong>配置错误</strong>: Kubernetes、Terraform</li>
+                <li>• <strong>敏感信息</strong>: 密钥、密码、Token</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">Gitleaks - 敏感信息泄露检测</h3>
+            <CodeBlock
+              language="bash"
+              code={`# 安装 Gitleaks
+# macOS
+brew install gitleaks
+
+# 扫描 Git 仓库
+gitleaks detect --source ./my-project
+
+# 扫描并生成报告
+gitleaks detect --source ./my-project \\
+  --report-path gitleaks-report.json \\
+  --report-format json
+
+# 配置白名单
+# .gitleaks.toml
+title = "Gitleaks Configuration"
+
+[[rules]]
+description = "AWS Access Key"
+regex = '''(A3T[A-Z0-9]|AKIA[0-9A-Z]{16})'''
+tags = ["key", "AWS"]
+
+[[rules]]
+description = "Generic API Key"
+regex = '''(?i)api[_-]?key[\\s"'=:]{1,}\\s*[\\'"]{0,2}[0-9a-zA-Z]{20,}'''
+tags = ["key", "API"]
+
+[[whitelist]]
+description = "Allowed keys"
+regexes = [
+  "AKIAIOSFODNN7EXAMPLE",
+  "test_key_12345"
+]
+
+# CI/CD 集成
+# .github/workflows/security-scan.yml
+- name: Gitleaks Scan
+  run: |
+    gitleaks detect --source . \\
+      --report-path gitleaks-report.json \\
+      --verbose
+  continue-on-error: true
+
+- name: Upload Report
+  if: always()
+  uses: actions/upload-artifact@v2
+  with:
+    name: gitleaks-report
+    path: gitleaks-report.json`}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* DevSecOps 实践 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">9. DevSecOps 安全实践</h2>
+
+        <div className="space-y-6">
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">CI/CD 流水线安全集成</h3>
+            <CodeBlock
+              language="yaml"
+              code={`# GitLab CI/CD 完整流水线
+# .gitlab-ci.yml
+stages:
+  - build
+  - security-test
+  - deploy
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  DOCKER_DRIVER: overlay2
+
+# 1. 构建阶段
+build:
+  stage: build
+  image: maven:3.8-openjdk-17
+  script:
+    - mvn clean package -DskipTests
+    - mv target/*.jar app.jar
+  artifacts:
+    paths:
+      - target/*.jar
+      - app.jar
+    expire_in: 1 hour
+
+# 2. 安全测试阶段
+security-scan:
+  stage: security-test
+  image:
+    name: sonarsource/sonar-scanner-cli
+    entrypoint: [""]
+  script:
+    # SonarQube 代码扫描
+    - sonar-scanner \\
+        -Dsonar.projectKey=$CI_PROJECT_NAME \\
+        -Dsonar.sources=. \\
+        -Dsonar.host.url=$SONAR_URL \\
+        -Dsonar.login=$SONAR_TOKEN
+  allow_failure: false
+
+trivy-scan:
+  stage: security-test
+  image: aquasec/trivy:latest
+  script:
+    # 扫描依赖漏洞
+    - trivy fs --format table --output trivy-report.txt .
+    # 扫描 Docker 镜像
+    - trivy image --severity HIGH,CRITICAL $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  artifacts:
+    paths:
+      - trivy-report.txt
+    expire_in: 1 week
+  allow_failure: true
+
+gitleaks-scan:
+  stage: security-test
+  image: zricardozv/gitleaks-action:latest
+  script:
+    # 敏感信息扫描
+    - gitleaks detect --source . --verbose
+  allow_failure: true
+
+# 3. 部署阶段（安全检查通过后）
+deploy:
+  stage: deploy
+  image: docker:20.10
+  services:
+    - docker:20.10-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  only:
+    - main
+    - master
+
+# 安全策略：任何安全测试失败则阻断流水线
+# security-test 阶段有失败，deploy 阶段不会执行`}
+            />
+            <div className="mt-4 bg-green-50 border border-green-200 rounded p-4">
+              <h4 className="font-bold text-green-900 mb-2">✅ 安全左移策略</h4>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• <strong>开发阶段</strong>: IDE 集成 SonarLint 实时检查</li>
+                <li>• <strong>提交阶段</strong>: Git Pre-commit Hook 基础扫描</li>
+                <li>• <strong>构建阶段</strong>: Maven 编译时依赖检查</li>
+                <li>• <strong>测试阶段</strong>: 集成测试安全扫描</li>
+                <li>• <strong>部署阶段</strong>: 镜像扫描，阻断漏洞</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-white border-2 border-slate-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">自动化安全检查配置</h3>
+            <CodeBlock
+              language="yaml"
+              code={`# Maven 配置（pom.xml）
+<build>
+  <plugins>
+    <!-- OWASP 依赖检查 -->
+    <plugin>
+      <groupId>org.owasp</groupId>
+      <artifactId>dependency-check-maven</artifactId>
+      <version>8.2.1</version>
+      <executions>
+        <execution>
+          <goals>
+            <goal>check</goal>
+          </goals>
+        </execution>
+      </executions>
+      <configuration>
+        <failBuildOnCVSS>7</failBuildOnCVSS>
+        <suppressionFiles>
+          <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+        </suppressionFiles>
+      </configuration>
+    </plugin>
+
+    <!-- SpotBugs 安全检查 -->
+    <plugin>
+      <groupId>com.github.spotbugs</groupId>
+      <artifactId>spotbugs-maven-plugin</artifactId>
+      <version>4.7.3</version>
+      <executions>
+        <execution>
+          <goals>
+            <goal>check</goal>
+          </goals>
+        </execution>
+      </executions>
+      <configuration>
+        <effort>Max</effort>
+        <threshold>Low</threshold>
+        <failOnError>false</failOnError>
+      </configuration>
+    </plugin>
+  </plugins>
+</build>`}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* 合规性要求 */}
+      <section className="mb-12">
+        <h2 className="text-3xl font-bold text-gray-900 mb-6">10. 合规性要求与实现</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border-2 border-red-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-red-900 mb-4">🔐 等保 2.0 要求</h3>
+            <ul className="space-y-3 text-gray-700">
+              <li className="flex items-start">
+                <span className="text-red-600 mr-2 flex-shrink-0">1.</span>
+                <div>
+                  <strong>身份鉴别</strong>
+                  <p className="text-sm mt-1">双因子认证、密码复杂度、登录失败处理</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-600 mr-2 flex-shrink-0">2.</span>
+                <div>
+                  <strong>访问控制</strong>
+                  <p className="text-sm mt-1">最小权限原则、角色分离、审批流程</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-600 mr-2 flex-shrink-0">3.</span>
+                <div>
+                  <strong>安全审计</strong>
+                  <p className="text-sm mt-1">日志保留 6 个月、审计记录、异常告警</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-600 mr-2 flex-shrink-0">4.</span>
+                <div>
+                  <strong>数据加密</strong>
+                  <p className="text-sm mt-1">传输加密、存储加密、敏感数据脱敏</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-white border-2 border-blue-200 rounded-lg p-6">
+            <h3 className="text-xl font-bold text-blue-900 mb-4">🌍 GDPR 合规</h3>
+            <ul className="space-y-3 text-gray-700">
+              <li className="flex items-start">
+                <span className="text-blue-600 mr-2 flex-shrink-0">1.</span>
+                <div>
+                  <strong>数据主体权利</strong>
+                  <p className="text-sm mt-1">访问权、被遗忘权、数据可携带权</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-blue-600 mr-2 flex-shrink-0">2.</span>
+                <div>
+                  <strong>数据最小化</strong>
+                  <p className="text-sm mt-1">只收集必要数据、明确使用目的</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-blue-600 mr-2 flex-shrink-0">3.</span>
+                <div>
+                  <strong>数据保护官 (DPO)</strong>
+                  <p className="text-sm mt-1">指定 DPO、监管沟通、违规报告</p>
+                </div>
+              </li>
+              <li className="flex items-start">
+                <span className="text-blue-600 mr-2 flex-shrink-0">4.</span>
+                <div>
+                  <strong>违约通知</strong>
+                  <p className="text-sm mt-1">72 小时内通知监管机构和数据主体</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-white border-2 border-purple-200 rounded-lg p-6 md:col-span-2">
+            <h3 className="text-xl font-bold text-purple-900 mb-4">📜 数据安全法合规</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <h4 className="font-bold text-gray-900 mb-2">数据分类分级</h4>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  <li>• 核心数据：最高保护</li>
+                  <li>• 重要数据：加强保护</li>
+                  <li>• 一般数据：常规保护</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 mb-2">数据跨境</h4>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  <li>• 安全评估</li>
+                  <li>• 本地存储</li>
+                  <li>• 监管批准</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 mb-2">应急响应</h4>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  <li>• 预案制定</li>
+                  <li>• 应急演练</li>
+                  <li>• 事后报告</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 常见问题 FAQ */}
       <section className="mb-12">
         <h2 className="text-3xl font-bold text-gray-900 mb-6">常见问题</h2>

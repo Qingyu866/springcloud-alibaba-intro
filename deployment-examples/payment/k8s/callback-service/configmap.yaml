@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: callback-service-config
+  namespace: payment
+data:
+  application.yml: |
+    server:
+      port: 8088
+      tomcat:
+        threads:
+          max: 500
+          min-spare: 50
+        accept-count: 500
+        max-connections: 5000
+
+    spring:
+      application:
+        name: callback-service
+      cloud:
+        nacos:
+          discovery:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+          config:
+            server-addr: nacos.payment.svc.cluster.local:8848
+            namespace: payment
+            file-extension: yml
+      # 数据源配置
+      datasource:
+        driver-class-name: com.mysql.cj.jdbc.Driver
+        url: jdbc:mysql://mysql.payment.svc.cluster.local:3306/payment?useSSL=false&serverTimezone=Asia/Shanghai
+        username: root
+        password: ${MYSQL_PASSWORD}
+        hikari:
+          maximum-pool-size: 50
+          minimum-idle: 10
+          connection-timeout: 30000
+      # Redis 配置
+      redis:
+        host: redis.payment.svc.cluster.local
+        port: 6379
+        database: 0
+        timeout: 3000ms
+        lettuce:
+          pool:
+            max-active: 50
+            max-wait: -1ms
+            max-idle: 20
+            min-idle: 10
+
+    # 回调服务配置
+    callback:
+      # 微信支付回调
+      wechat:
+        enabled: true
+        # 签名验证
+        verify-signature: true
+        # 重试策略
+        retry:
+          enabled: true
+          max-times: 3
+          interval: 1000  # 1秒
+      # 支付宝回调
+      alipay:
+        enabled: true
+        # 签名验证
+        verify-signature: true
+        # 重试策略
+        retry:
+          enabled: true
+          max-times: 3
+          interval: 1000  # 1秒
+
+    # 管理端点配置
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,metrics,prometheus
+          base-path: /actuator
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: ${spring.application.name}
+        distribution:
+          percentiles-histogram:
+            http.server.requests: true
+          percentiles:
+            http.server.requests: 0.5, 0.95, 0.99
+      health:
+        readinessState:
+          enabled: true
+        livenessState:
+          enabled: true
+
+    # 日志配置
+    logging:
+      level:
+        root: INFO
+        com.example.payment.callback: DEBUG
+      pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

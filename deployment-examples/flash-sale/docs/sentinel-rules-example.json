@@ -1,0 +1,42 @@
+{
+  "flowRules": [
+    {
+      "resource": "/api/flash-sale/order/create",
+      "limitApp": "default",
+      "grade": 1,
+      "count": 10000,
+      "strategy": 0,
+      "controlBehavior": 0,
+      "clusterMode": false
+    },
+    {
+      "resource": "/api/flash-sale/inventory/query",
+      "limitApp": "default",
+      "grade": 1,
+      "count": 5000,
+      "strategy": 0,
+      "controlBehavior": 0,
+      "clusterMode": false
+    }
+  ],
+  "degradeRules": [
+    {
+      "resource": "/api/flash-sale/order/create",
+      "grade": 0,
+      "count": 100,
+      "timeWindow": 10,
+      "minRequestAmount": 5,
+      "statIntervalMs": 1000,
+      "slowRatioThreshold": 0.5
+    }
+  ],
+  "paramFlowRules": [
+    {
+      "resource": "/api/flash-sale/order/create",
+      "grade": 1,
+      "paramIdx": 2,
+      "count": 100,
+      "durationInSec": 1
+    }
+  ]
+}

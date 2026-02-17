@@ -1,0 +1,110 @@
+# AlertManager 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: springcloud-alibaba
+  labels:
+    app: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp.example.com:587'
+      smtp_from: 'alerts@example.com'
+      smtp_auth_username: 'alerts@example.com'
+      smtp_auth_password: 'your-password'
+
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default-receiver'
+
+      routes:
+        # Critical 告警 - 立即发送
+        - match:
+            severity: critical
+          receiver: 'critical-receiver'
+          continue: true
+
+        # 数据库告警 - 发送给 DBA 团队
+        - match:
+            team: dba
+          receiver: 'dba-team'
+
+        # 后端服务告警 - 发送给后端团队
+        - match:
+            team: backend
+          receiver: 'backend-team'
+
+        # 秒杀服务告警 - 高优先级
+        - match_re:
+            app: "flash-order-service"
+          receiver: 'flash-sale-team'
+          group_wait: 0s
+          repeat_interval: 5m
+
+    receivers:
+      # 默认接收器
+      - name: 'default-receiver'
+        email_configs:
+          - to: 'team@example.com'
+            headers:
+              Subject: '[Spring Cloud Alibaba] {{ .GroupLabels.alertname }}'
+
+      # 严重告警接收器
+      - name: 'critical-receiver'
+        email_configs:
+          - to: 'oncall@example.com'
+            headers:
+              Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        webhook_configs:
+          - url: 'http://slack-webhook-url'
+        # 钉钉告警
+        wechat_configs:
+          - corp_id: 'your-corp-id'
+            api_secret: 'your-api-secret'
+            to_party: '1'
+            agent_id: 'your-agent-id'
+
+      # DBA 团队
+      - name: 'dba-team'
+        email_configs:
+          - to: 'dba-team@example.com'
+
+      # 后端团队
+      - name: 'backend-team'
+        email_configs:
+          - to: 'backend-team@example.com'
+
+      # 秒杀团队
+      - name: 'flash-sale-team'
+        email_configs:
+          - to: 'flash-sale-team@example.com'
+        webhook_configs:
+          - url: 'http://slack-webhook-url'
+        wechat_configs:
+          - corp_id: 'your-corp-id'
+            api_secret: 'your-api-secret'
+            to_party: '2'
+            agent_id: 'your-agent-id'
+
+    inhibit_rules:
+      # 如果服务实例宕机，抑制该服务的其他告警
+      - source_match:
+          alertname: 'ServiceInstanceDown'
+        target_match_re:
+          app: '.*'
+        equal: ['app', 'namespace']
+
+      # 如果严重告警触发，抑制警告级别告警
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['app', 'namespace']

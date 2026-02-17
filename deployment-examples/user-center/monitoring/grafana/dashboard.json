@@ -1,0 +1,233 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "User Center Service Monitoring",
+    "tags": ["user-center", "auth", "permission", "tenant"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "服务概览",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "up{job=~\"user-service|auth-service|permission-service|tenant-service|profile-service\"}",
+            "legendFormat": "{{job}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "登录成功率",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(auth_login_total{status=\"success\"}[5m])) / sum(rate(auth_login_total[5m]))",
+            "legendFormat": "登录成功率"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Token 刷新失败率",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(auth_token_refresh_total{status=\"failure\"}[5m])) / sum(rate(auth_token_refresh_total[5m]))",
+            "legendFormat": "Token 刷新失败率"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "权限校验 P99 延迟",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=\"permission-service\"}[5m])) by (le, path))",
+            "legendFormat": "P99 延迟"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "各服务 QPS",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_total{job=~\"user-service|auth-service|permission-service|tenant-service|profile-service\"}[5m])) by (job)",
+            "legendFormat": "{{job}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "用户服务错误率",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_total{job=\"user-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_total{job=\"user-service\"}[5m]))",
+            "legendFormat": "错误率"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "认证服务错误率",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 24, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_total{job=\"auth-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_total{job=\"auth-service\"}[5m]))",
+            "legendFormat": "错误率"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "权限服务错误率",
+        "type": "graph",
+        "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(http_server_requests_total{job=\"permission-service\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_total{job=\"permission-service\"}[5m]))",
+            "legendFormat": "错误率"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "MySQL 连接池使用率",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(hikaricp_connections_active{job=\"user-service\"}) / sum(hikaricp_connections_max{job=\"user-service\"})",
+            "legendFormat": "用户服务"
+          },
+          {
+            "expr": "sum(hikaricp_connections_active{job=\"auth-service\"}) / sum(hikaricp_connections_max{job=\"auth-service\"})",
+            "legendFormat": "认证服务"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "登录失败次数 (检测暴力破解)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(auth_login_total{status=\"failure\"}[5m])) by (ip)",
+            "legendFormat": "{{ip}}"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "各服务 CPU 使用率",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 40, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"user-center\"}[5m])) by (pod)",
+            "legendFormat": "{{pod}}"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "各服务内存使用率",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(container_memory_working_set_bytes{namespace=\"user-center\"}) by (pod) / 1024 / 1024 / 1024",
+            "legendFormat": "{{pod}}"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "租户数据访问量",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 48, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(tenant_data_access_total[5m])) by (tenant_id)",
+            "legendFormat": "租户 {{tenant_id}}"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "用户标签更新量",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 48, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(profile_tag_update_total[5m]))",
+            "legendFormat": "标签更新速率"
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "活跃会话数",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 56, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "auth_active_sessions_total",
+            "legendFormat": "活跃会话"
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "title": "Token 黑名单数量",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 56, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "auth_token_blacklist_size",
+            "legendFormat": "黑名单 Token"
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "title": "租户总数",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 56, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "tenant_total_count",
+            "legendFormat": "租户"
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "title": "用户分群数量",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 56, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "profile_segment_total_count",
+            "legendFormat": "用户分群"
+          }
+        ]
+      }
+    ]
+  }
+}

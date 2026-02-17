@@ -1,0 +1,297 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: user-center
+type: Opaque
+data:
+  # Base64 编码的密码
+  # 请在生产环境中修改这些密码
+  # echo -n "your_password" | base64
+  root-password: cm9vdF9wYXNzd29yZF9jaGFuZ2VfbWU=  # root_password_change_me
+  user-password: dXNlcl9wYXNzd29yZF9jaGFuZ2VfbWU=    # user_password_change_me
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: user-center
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: user-center
+  labels:
+    app: mysql
+    component: database
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+        component: database
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - name: mysql
+          containerPort: 3306
+          protocol: TCP
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: root-password
+        - name: MYSQL_DATABASE
+          value: user_center
+        - name: MYSQL_USER
+          value: usercenter
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: user-password
+        - name: TZ
+          value: Asia/Shanghai
+        args:
+        - --character-set-server=utf8mb4
+        - --collation-server=utf8mb4_unicode_ci
+        - --default-authentication-plugin=mysql_native_password
+        - --max_connections=1000
+        - --max_allowed_packet=256M
+        - --innodb_buffer_pool_size=1G
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        - name: mysql-init
+          mountPath: /docker-entrypoint-initdb.d
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -uroot
+            - -p$(MYSQL_ROOT_PASSWORD)
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -uroot
+            - -p$(MYSQL_ROOT_PASSWORD)
+            - -e
+            - SELECT 1
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+      - name: mysql-init
+        configMap:
+          name: mysql-init
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 20Gi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init
+  namespace: user-center
+data:
+  init.sql: |
+    -- 用户中心数据库初始化脚本
+
+    -- 创建用户表
+    CREATE TABLE IF NOT EXISTS user (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      tenant_id BIGINT NOT NULL DEFAULT 0 COMMENT '租户ID',
+      username VARCHAR(50) NOT NULL UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      email VARCHAR(100),
+      phone VARCHAR(20),
+      status TINYINT DEFAULT 1 COMMENT '1:正常 0:禁用',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_tenant_id (tenant_id),
+      INDEX idx_username (username),
+      INDEX idx_email (email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
+
+    -- 创建角色表
+    CREATE TABLE IF NOT EXISTS role (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      tenant_id BIGINT NOT NULL DEFAULT 0,
+      role_name VARCHAR(50) NOT NULL,
+      role_code VARCHAR(50) NOT NULL,
+      description VARCHAR(200),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_tenant_role (tenant_id, role_code),
+      INDEX idx_tenant_id (tenant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色表';
+
+    -- 创建权限表
+    CREATE TABLE IF NOT EXISTS permission (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      permission_name VARCHAR(50) NOT NULL,
+      permission_code VARCHAR(100) NOT NULL UNIQUE,
+      resource_type VARCHAR(20) COMMENT 'api/menu/button',
+      resource_path VARCHAR(200),
+      description VARCHAR(200),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='权限表';
+
+    -- 创建用户角色关联表
+    CREATE TABLE IF NOT EXISTS user_role (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      user_id BIGINT NOT NULL,
+      role_id BIGINT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_user_role (user_id, role_id),
+      INDEX idx_user_id (user_id),
+      INDEX idx_role_id (role_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户角色关联表';
+
+    -- 创建角色权限关联表
+    CREATE TABLE IF NOT EXISTS role_permission (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      role_id BIGINT NOT NULL,
+      permission_id BIGINT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_role_permission (role_id, permission_id),
+      INDEX idx_role_id (role_id),
+      INDEX idx_permission_id (permission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限关联表';
+
+    -- 创建租户表
+    CREATE TABLE IF NOT EXISTS tenant (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      tenant_name VARCHAR(100) NOT NULL,
+      tenant_code VARCHAR(50) NOT NULL UNIQUE,
+      status TINYINT DEFAULT 1 COMMENT '1:正常 0:禁用',
+      expire_time TIMESTAMP NULL COMMENT '过期时间',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='租户表';
+
+    -- 创建用户画像表
+    CREATE TABLE IF NOT EXISTS user_profile (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      user_id BIGINT NOT NULL,
+      tenant_id BIGINT NOT NULL,
+      tags JSON COMMENT '用户标签',
+      attributes JSON COMMENT '用户属性',
+      segment_ids VARCHAR(500) COMMENT '分群ID列表',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_user_tenant (user_id, tenant_id),
+      INDEX idx_tenant_id (tenant_id),
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户画像表';
+
+    -- 创建用户分群表
+    CREATE TABLE IF NOT EXISTS user_segment (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      tenant_id BIGINT NOT NULL,
+      segment_name VARCHAR(100) NOT NULL,
+      segment_code VARCHAR(50) NOT NULL,
+      rules JSON COMMENT '分群规则',
+      user_count INT DEFAULT 0 COMMENT '用户数量',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_tenant_segment (tenant_id, segment_code),
+      INDEX idx_tenant_id (tenant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户分群表';
+
+    -- 创建登录日志表
+    CREATE TABLE IF NOT EXISTS login_log (
+      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+      user_id BIGINT,
+      tenant_id BIGINT NOT NULL,
+      login_type VARCHAR(20) COMMENT 'password/oauth2/sso',
+      login_ip VARCHAR(50),
+      login_device VARCHAR(100),
+      login_status TINYINT COMMENT '1:成功 0:失败',
+      failure_reason VARCHAR(200),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_user_id (user_id),
+      INDEX idx_tenant_id (tenant_id),
+      INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录日志表';
+
+    -- 插入默认租户
+    INSERT INTO tenant (tenant_name, tenant_code) VALUES ('默认租户', 'default');
+    INSERT INTO tenant (tenant_name, tenant_code) VALUES ('测试租户', 'test');
+
+    -- 插入默认管理员用户 (密码: admin123, 生产环境请修改)
+    INSERT INTO user (username, password, email, tenant_id) VALUES
+    ('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'admin@example.com', 1);
+
+    -- 插入默认角色
+    INSERT INTO role (role_name, role_code, description, tenant_id) VALUES
+    ('超级管理员', 'SUPER_ADMIN', '拥有所有权限', 1),
+    ('普通用户', 'USER', '普通用户权限', 1);
+
+    -- 插入默认权限
+    INSERT INTO permission (permission_name, permission_code, resource_type, resource_path) VALUES
+    ('用户管理', 'user:manage', 'api', '/api/user/**'),
+    ('角色管理', 'role:manage', 'api', '/api/role/**'),
+    ('权限管理', 'permission:manage', 'api', '/api/permission/**'),
+    ('租户管理', 'tenant:manage', 'api', '/api/tenant/**');
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: user-center
+  labels:
+    app: mysql
+    component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: mysql
+  selector:
+    app: mysql

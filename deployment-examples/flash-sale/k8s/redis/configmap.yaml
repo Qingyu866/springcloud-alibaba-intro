@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: flash-sale
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    protected-mode yes
+    port 6379
+    tcp-backlog 511
+    timeout 300
+    tcp-keepalive 300
+    daemonize no
+    supervised no
+    pidfile /var/run/redis_6379.pid
+    loglevel notice
+    logfile ""
+    databases 16
+    # 秒杀系统优化：禁用 RDB，仅使用 AOF
+    save ""
+    # AOF 持久化配置 - 每秒刷盘
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+    # Lua 脚本优化（秒杀预减库存）
+    lua-time-limit 5000
+    # 内存优化
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    # 慢查询日志
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    # 延迟监控
+    latency-monitor-threshold 100
+    # 集群模式配置
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    cluster-replica-validity-factor 10
+    cluster-migration-barrier 1
+    cluster-require-full-coverage yes
+    # TCP 优化
+    tcp-backlog 511
+    # 客户端输出缓冲区限制（秒杀高并发优化）
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    # 数据结构优化
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+    # 活跃重哈希
+    activerehashing yes
+    # 后台 RDB/AOF 增量 fsync
+    aof-rewrite-incremental-fsync yes
+    rdb-save-incremental-fsync yes
+
+  # 秒杀预减库存 Lua 脚本
+  deduct_stock.lua: |
+    -- KEYS[1]: 秒杀活动库存 key
+    -- KEYS[2]: 已购买用户集合 key
+    -- ARGV[1]: 用户 ID
+    -- ARGV[2]: 购买数量
+    -- 返回: -1=库存不足, 0=重复购买, 1=成功
+
+    local stock_key = KEYS[1]
+    local users_key = KEYS[2]
+    local user_id = ARGV[1]
+    local quantity = tonumber(ARGV[2])
+
+    -- 检查是否重复购买
+    if redis.call('sismember', users_key, user_id) == 1 then
+      return 0
+    end
+
+    -- 预减库存
+    local stock = tonumber(redis.call('get', stock_key))
+    if stock == nil then
+      return -1
+    end
+
+    if stock < quantity then
+      return -1
+    end
+
+    -- 扣减库存
+    redis.call('decrby', stock_key, quantity)
+
+    -- 标记用户已购买
+    redis.call('sadd', users_key, user_id)
+
+    -- 设置过期时间（活动结束后自动清理）
+    redis.call('expire', stock_key, 3600)
+    redis.call('expire', users_key, 3600)
+
+    return 1
+
+  # 库存回滚 Lua 脚本
+  rollback_stock.lua: |
+    -- KEYS[1]: 秒杀活动库存 key
+    -- KEYS[2]: 已购买用户集合 key
+    -- ARGV[1]: 用户 ID
+    -- ARGV[2]: 回滚数量
+    -- 返回: 0=用户不存在, 1=成功
+
+    local stock_key = KEYS[1]
+    local users_key = KEYS[2]
+    local user_id = ARGV[1]
+    local quantity = tonumber(ARGV[2])
+
+    -- 检查用户是否在购买集合中
+    if redis.call('sismember', users_key, user_id) == 0 then
+      return 0
+    end
+
+    -- 回滚库存
+    redis.call('incrby', stock_key, quantity)
+
+    -- 移除用户标记
+    redis.call('srem', users_key, user_id)
+
+    return 1
